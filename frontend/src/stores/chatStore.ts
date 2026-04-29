@@ -17,7 +17,7 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>()((set, get) => {
-  const { stream, abort, isStreaming } = useSSE();
+  const { stream, isStreaming } = useSSE();
 
   return {
     conversations: [],
@@ -62,11 +62,11 @@ export const useChatStore = create<ChatState>()((set, get) => {
       try {
         await api.delete(`/api/conversations/${id}`);
         set((state) => {
-          const conversations = state.conversations.filter((c) => c.id !== id);
-          const currentConversationId =
+          const filtered = state.conversations.filter((c) => c.id !== id);
+          const newCurrentId =
             state.currentConversationId === id ? null : state.currentConversationId;
-          const messages = currentConversationId === null ? [] : state.messages;
-          return { conversations, currentConversationId, messages };
+          const newMessages = newCurrentId === null ? [] : state.messages;
+          return { conversations: filtered, currentConversationId: newCurrentId, messages: newMessages };
         });
       } catch (e) {
         console.error('Failed to delete conversation:', e);

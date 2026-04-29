@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, FormEvent } from 'react';
+import { useState, useRef, useEffect, type FormEvent } from 'react';
 import { useChatStore } from '../stores/chatStore';
 import MessageBubble from './MessageBubble';
 import AgentStep from './AgentStep';

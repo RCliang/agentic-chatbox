@@ -5,7 +5,6 @@ import ChatArea from '../components/ChatArea';
 
 export default function ChatPage() {
   const fetchConversations = useChatStore((s) => s.fetchConversations);
-  const conversations = useChatStore((s) => s.conversations);
   const createConversation = useChatStore((s) => s.createConversation);
 
   useEffect(() => {
