@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models import Conversation, Message, User
 from app.schemas.message import ChatSendRequest, MessageResponse
+from app.services.agent import agent_loop
 from app.services.chat import normal_chat_stream
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -22,7 +23,10 @@ async def send_message(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Send a user message and stream the assistant reply via SSE."""
+    """Send a user message and stream the assistant reply via SSE.
+
+    Supports both ``normal`` and ``agentic`` conversation modes.
+    """
     conv_uuid = uuid.UUID(body.conversation_id)
     stmt = select(Conversation).where(
         Conversation.id == conv_uuid,
@@ -32,11 +36,14 @@ async def send_message(
     conversation = result.scalar_one_or_none()
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
     if conversation.mode == "agentic":
-        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Agentic mode not yet implemented")
+        stream_fn = lambda: agent_loop(conversation, body.content, db)
+    else:
+        stream_fn = lambda: normal_chat_stream(conversation, body.content, db)
 
     async def event_generator():
-        async for event in normal_chat_stream(conversation, body.content, db):
+        async for event in stream_fn():
             yield f"event: {event['event']}\ndata: {event['data']}\n\n"
 
     return StreamingResponse(

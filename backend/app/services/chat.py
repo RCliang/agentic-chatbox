@@ -68,6 +68,21 @@ async def normal_chat_stream(
         history[:-1], DEFAULT_SYSTEM_PROMPT, user_content
     )
 
+    # Append RAG context if knowledge_base_id is set
+    if conversation.knowledge_base_id:
+        from app.services.knowledge import get_kb_context
+
+        rag_context = await get_kb_context(
+            db, conversation.knowledge_base_id, user_content
+        )
+        if rag_context:
+            # Append RAG context to the system message
+            if llm_messages and llm_messages[0]["role"] == "system":
+                llm_messages[0] = {
+                    "role": "system",
+                    "content": llm_messages[0]["content"] + "\n\n" + rag_context,
+                }
+
     # Stream from LLM
     full_content = ""
     async for chunk in client.chat_stream(llm_messages):
