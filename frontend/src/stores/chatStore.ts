@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import api from '../api/client';
-import { useSSE } from '../hooks/useSSE';
+import { createSSEStream } from '../hooks/useSSE';
 import type { Conversation, Message, SSEEvent } from '../types';
 
 interface ChatState {
@@ -17,14 +17,14 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>()((set, get) => {
-  const { stream, isStreaming } = useSSE();
+  const sse = createSSEStream();
 
   return {
     conversations: [],
     currentConversationId: null,
     messages: [],
     agentEvents: [],
-    isStreaming,
+    isStreaming: false,
 
     fetchConversations: async () => {
       try {
@@ -102,7 +102,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
 
       set({ isStreaming: true });
 
-      await stream('http://localhost:8000/api/chat/send', { conversation_id: convId, content }, (event: SSEEvent) => {
+      await sse.stream('http://localhost:8000/api/chat/send', { conversation_id: convId, content }, (event: SSEEvent) => {
         switch (event.event) {
           case 'text': {
             assistantContent += (event.data as { content: string }).content;

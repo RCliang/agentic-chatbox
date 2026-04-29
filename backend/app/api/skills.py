@@ -14,7 +14,7 @@ from app.schemas.skill import SkillCreate, SkillResponse, SkillUpdate
 router = APIRouter(prefix="/api/skills", tags=["skills"])
 
 
-@router.get("/", response_model=list[SkillResponse])
+@router.get("", response_model=list[SkillResponse])
 async def list_skills(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -24,7 +24,7 @@ async def list_skills(
     return result.scalars().all()
 
 
-@router.post("/", response_model=SkillResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=SkillResponse, status_code=status.HTTP_201_CREATED)
 async def create_skill(
     body: SkillCreate,
     user: User = Depends(get_current_user),

@@ -39,7 +39,7 @@ async def _get_user_conversation(
     return conversation
 
 
-@router.get("/", response_model=list[ConversationListResponse])
+@router.get("", response_model=list[ConversationListResponse])
 async def list_conversations(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -57,7 +57,7 @@ async def list_conversations(
     return result.scalars().all()
 
 
-@router.post("/", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
 async def create_conversation(
     body: ConversationCreate,
     user: User = Depends(get_current_user),
