@@ -1,6 +1,5 @@
 """Knowledge base CRUD endpoints."""
 
-import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -14,6 +13,7 @@ from app.models import (
     DocumentStatus,
     KnowledgeBase,
     KnowledgeBaseScope,
+    KnowledgeBaseShare,
     KnowledgeDocument,
     User,
 )
@@ -22,6 +22,8 @@ from app.schemas.knowledge import (
     DocumentUploadResponse,
     KnowledgeBaseCreate,
     KnowledgeBaseResponse,
+    KnowledgeShareCreate,
+    KnowledgeShareResponse,
 )
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
@@ -73,7 +75,7 @@ async def list_knowledge_bases(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return personal KBs owned by the user + department KBs matching user's department."""
+    """Return personal KBs + department KBs + KBs shared with the user."""
     # Personal knowledge bases
     personal_q = select(KnowledgeBase).where(
         KnowledgeBase.scope == KnowledgeBaseScope.personal,
@@ -86,12 +88,28 @@ async def list_knowledge_bases(
         KnowledgeBase.department_id == user.department_id,
     )
 
+    # Shared knowledge bases
+    shared_q = (
+        select(KnowledgeBase)
+        .join(KnowledgeBaseShare, KnowledgeBase.id == KnowledgeBaseShare.knowledge_base_id)
+        .where(KnowledgeBaseShare.shared_with_user_id == user.id)
+    )
+
     personal_result = await db.execute(personal_q)
     dept_result = await db.execute(dept_q)
+    shared_result = await db.execute(shared_q)
 
     personal_kbs = list(personal_result.scalars().all())
     dept_kbs = list(dept_result.scalars().all())
-    all_kbs = personal_kbs + dept_kbs
+    shared_kbs = list(shared_result.scalars().all())
+
+    # Deduplicate by id
+    seen = set()
+    all_kbs = []
+    for kb in personal_kbs + dept_kbs + shared_kbs:
+        if kb.id not in seen:
+            seen.add(kb.id)
+            all_kbs.append(kb)
 
     # Annotate each KB with document_count
     result = []
@@ -137,12 +155,8 @@ async def create_knowledge_base(
         embedding_model=body.embedding_model,
         chunk_size=body.chunk_size,
         chunk_overlap=body.chunk_overlap,
-        milvus_collection=None,  # set below after id is assigned
     )
     db.add(kb)
-    await db.flush()  # assign kb.id
-
-    kb.milvus_collection = f"kb_{kb.id}"
     await db.commit()
     await db.refresh(kb)
 
@@ -166,6 +180,103 @@ async def delete_knowledge_base(
 
 
 # ---------------------------------------------------------------------------
+# Share endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/bases/{kb_id}/shares", response_model=list[KnowledgeShareResponse])
+async def list_shares(
+    kb_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List users this knowledge base is shared with. Only owner can view."""
+    kb = await _get_kb_or_404(kb_id, db)
+    _check_kb_permission(kb, user)
+
+    result = await db.execute(
+        select(KnowledgeBaseShare, User.username)
+        .join(User, KnowledgeBaseShare.shared_with_user_id == User.id)
+        .where(KnowledgeBaseShare.knowledge_base_id == kb_id)
+    )
+    shares = []
+    for share, username in result.all():
+        resp = KnowledgeShareResponse.model_validate(share)
+        resp.shared_with_username = username
+        shares.append(resp)
+    return shares
+
+
+@router.post("/bases/{kb_id}/shares", response_model=KnowledgeShareResponse, status_code=status.HTTP_201_CREATED)
+async def create_share(
+    kb_id: uuid.UUID,
+    body: KnowledgeShareCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Share a knowledge base with another user. Only owner can share."""
+    kb = await _get_kb_or_404(kb_id, db)
+    _check_kb_permission(kb, user)
+
+    # Check target user exists
+    target_result = await db.execute(select(User).where(User.id == body.user_id))
+    target_user = target_result.scalar_one_or_none()
+    if target_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Check not sharing with self
+    if target_user.id == user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot share with yourself")
+
+    # Check not already shared
+    existing = await db.execute(
+        select(KnowledgeBaseShare).where(
+            KnowledgeBaseShare.knowledge_base_id == kb_id,
+            KnowledgeBaseShare.shared_with_user_id == body.user_id,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already shared with this user")
+
+    share = KnowledgeBaseShare(
+        knowledge_base_id=kb_id,
+        shared_with_user_id=body.user_id,
+    )
+    db.add(share)
+    await db.commit()
+    await db.refresh(share)
+
+    resp = KnowledgeShareResponse.model_validate(share)
+    resp.shared_with_username = target_user.username
+    return resp
+
+
+@router.delete("/bases/{kb_id}/shares/{share_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_share(
+    kb_id: uuid.UUID,
+    share_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a knowledge base share. Only owner can remove."""
+    kb = await _get_kb_or_404(kb_id, db)
+    _check_kb_permission(kb, user)
+
+    result = await db.execute(
+        select(KnowledgeBaseShare).where(
+            KnowledgeBaseShare.id == share_id,
+            KnowledgeBaseShare.knowledge_base_id == kb_id,
+        )
+    )
+    share = result.scalar_one_or_none()
+    if share is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Share not found")
+
+    await db.delete(share)
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
 # Document endpoints
 # ---------------------------------------------------------------------------
 
@@ -181,6 +292,7 @@ async def upload_document(
     kb = await _get_kb_or_404(kb_id, db)
     _check_kb_permission(kb, user)
 
+    import os
     upload_dir = os.path.join("uploads", str(kb_id))
     os.makedirs(upload_dir, exist_ok=True)
 

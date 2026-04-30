@@ -8,3 +8,4 @@ build/
 .superpowers/
 *.egg-info/
 tmpclaude-*
+backend/tmpclaude-*

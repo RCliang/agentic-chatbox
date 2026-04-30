@@ -13,21 +13,26 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
       <div
         className={`max-w-[70%] px-4 py-3 ${
           isUser
-            ? 'bg-[#16213e] rounded-2xl rounded-br-sm'
-            : 'bg-[#16213e] rounded-lg'
+            ? 'rounded-2xl rounded-br-sm'
+            : 'rounded-2xl rounded-bl-sm'
         }`}
+        style={{
+          background: isUser ? 'var(--accent)' : 'var(--bg-card)',
+          color: isUser ? '#ffffff' : 'var(--text-primary)',
+          border: isUser ? undefined : '1px solid var(--border-color)',
+        }}
       >
         {!isUser && (
-          <p className="text-xs text-blue-400 mb-1 font-medium">Assistant</p>
+          <p className="text-xs mb-1 font-medium" style={{ color: 'var(--accent-light)' }}>Assistant</p>
         )}
-        <div className="text-gray-200 text-sm leading-relaxed prose prose-invert prose-sm max-w-none">
+        <div className="text-sm leading-relaxed prose prose-sm max-w-none" style={{ color: isUser ? '#ffffff' : 'var(--text-primary)' }}>
           {message.content ? (
             <ReactMarkdown>{message.content}</ReactMarkdown>
           ) : (
-            <span className="text-gray-500 italic">No content</span>
+            <span className="italic" style={{ color: isUser ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)' }}>No content</span>
           )}
         </div>
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs mt-1" style={{ color: isUser ? 'rgba(255,255,255,0.6)' : 'var(--text-muted)' }}>
           {new Date(message.created_at).toLocaleTimeString()}
         </p>
       </div>

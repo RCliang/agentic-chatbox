@@ -1,4 +1,4 @@
-"""Skill model."""
+"""Skill model — modular skill definition with progressive loading support."""
 
 from sqlalchemy import Boolean, ForeignKey, JSON, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -11,14 +11,20 @@ class Skill(BaseMixin):
 
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    tool_ids: Mapped[list | dict | None] = mapped_column(JSON, nullable=True)
+    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # ---- Modular content ----
+    instructions: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    tools: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    references: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    examples: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+    # Legacy / convenience
     knowledge_base_id: Mapped[str | None] = mapped_column(
         Uuid,
         ForeignKey("knowledge_bases.id"),
         nullable=True,
     )
-    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # relationships
     conversations: Mapped[list["Conversation"]] = relationship(

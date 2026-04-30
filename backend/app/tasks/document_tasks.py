@@ -13,7 +13,7 @@ from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.models.base import Base
 from app.models.knowledge_document import DocumentStatus, KnowledgeDocument
-from app.services.knowledge import chunk_text
+from app.services.knowledge import GLOBAL_COLLECTION, chunk_text
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +44,8 @@ def process_document(self, doc_id: str) -> dict:
     1. Load document from DB, set status="indexing".
     2. Read the file from ``file_path``.
     3. Split text into overlapping chunks.
-    4. Create (or re-use) a Milvus collection for the KB.
-    5. Embed each chunk and insert into Milvus.
-    6. Update document status to "ready" and record chunk_count.
+    4. Embed each chunk and insert into the global Milvus collection.
+    5. Update document status to "ready" and record chunk_count.
     """
     session = _get_sync_session()
     try:
@@ -90,7 +89,7 @@ def process_document(self, doc_id: str) -> dict:
 
         # 4-5. Embed and insert into Milvus (run async code in sync context)
         inserted_count = asyncio.run(
-            _embed_and_insert(doc.knowledge_base_id, doc_id, chunks)
+            _embed_and_insert(str(doc.knowledge_base_id), doc_id, chunks)
         )
 
         # 6. Mark ready
@@ -129,7 +128,7 @@ async def _embed_and_insert(
     doc_id: str,
     chunks: list[str],
 ) -> int:
-    """Embed every chunk and insert into the Milvus collection for the KB."""
+    """Embed every chunk and insert into the global Milvus collection."""
     from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
 
     from app.services.knowledge import get_embedding
@@ -137,25 +136,24 @@ async def _embed_and_insert(
     # Connect to Milvus
     connections.connect(alias="default", uri=settings.milvus_uri)
 
-    collection_name = f"kb_{knowledge_base_id}"
-
     # --- Determine embedding dimension by embedding the first chunk ---
     first_embedding = await get_embedding(chunks[0])
     dim = len(first_embedding)
 
-    # --- Create collection if it doesn't exist ---
+    # --- Create global collection if it doesn't exist ---
     from pymilvus import utility
 
-    if not utility.has_collection(collection_name):
+    if not utility.has_collection(GLOBAL_COLLECTION):
         fields = [
             FieldSchema(name="id", dtype=DataType.VARCHAR, is_primary=True, max_length=64),
+            FieldSchema(name="kb_id", dtype=DataType.VARCHAR, max_length=64),
             FieldSchema(name="doc_id", dtype=DataType.VARCHAR, max_length=64),
             FieldSchema(name="chunk_index", dtype=DataType.INT64),
             FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=4096),
             FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=dim),
         ]
-        schema = CollectionSchema(fields, description=f"KB collection {knowledge_base_id}")
-        collection = Collection(collection_name, schema=schema)
+        schema = CollectionSchema(fields, description="Global knowledge chunks collection")
+        collection = Collection(GLOBAL_COLLECTION, schema=schema)
 
         # Create IVF_FLAT index for COSINE similarity
         index_params = {
@@ -165,7 +163,7 @@ async def _embed_and_insert(
         }
         collection.create_index(field_name="embedding", index_params=index_params)
     else:
-        collection = Collection(collection_name)
+        collection = Collection(GLOBAL_COLLECTION)
 
     # --- Embed remaining chunks ---
     embeddings = [first_embedding]
@@ -175,11 +173,13 @@ async def _embed_and_insert(
 
     # --- Prepare data for insertion ---
     ids = [str(uuid.uuid4()) for _ in chunks]
+    kb_ids = [knowledge_base_id for _ in chunks]
     doc_ids = [doc_id for _ in chunks]
-    chunk_indices = [i for i in range(len(chunks))]
+    chunk_indices = list(range(len(chunks)))
 
     entities = [
         ids,
+        kb_ids,
         doc_ids,
         chunk_indices,
         chunks,

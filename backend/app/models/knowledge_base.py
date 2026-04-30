@@ -39,7 +39,6 @@ class KnowledgeBase(BaseMixin):
     )
     chunk_size: Mapped[int] = mapped_column(Integer, default=512, nullable=False)
     chunk_overlap: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
-    milvus_collection: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # relationships
     conversations: Mapped[list["Conversation"]] = relationship(
@@ -49,6 +48,11 @@ class KnowledgeBase(BaseMixin):
     documents: Mapped[list["KnowledgeDocument"]] = relationship(
         "KnowledgeDocument",
         back_populates="knowledge_base",
+    )
+    shares: Mapped[list["KnowledgeBaseShare"]] = relationship(
+        "KnowledgeBaseShare",
+        back_populates="knowledge_base",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:

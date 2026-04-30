@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
 import httpx
+from sqlalchemy import select
 
 from app.core.config import settings
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from app.models import User
+
 logger = logging.getLogger(__name__)
+
+GLOBAL_COLLECTION = "knowledge_chunks"
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +70,42 @@ async def get_embedding(text: str) -> list[float]:
 
 
 # ---------------------------------------------------------------------------
+# Accessible KB IDs
+# ---------------------------------------------------------------------------
+
+
+async def get_accessible_kb_ids(db: AsyncSession, user: User) -> list[str]:
+    """Return all knowledge base IDs that *user* can access.
+
+    Includes: personal KBs owned by user + department KBs + shared KBs.
+    """
+    from app.models import KnowledgeBase, KnowledgeBaseScope, KnowledgeBaseShare
+
+    # Personal
+    personal_q = select(KnowledgeBase.id).where(
+        KnowledgeBase.scope == KnowledgeBaseScope.personal,
+        KnowledgeBase.owner_id == user.id,
+    )
+    # Department
+    dept_q = select(KnowledgeBase.id).where(
+        KnowledgeBase.scope == KnowledgeBaseScope.department,
+        KnowledgeBase.department_id == user.department_id,
+    )
+    # Shared
+    shared_q = select(KnowledgeBaseShare.knowledge_base_id).where(
+        KnowledgeBaseShare.shared_with_user_id == user.id,
+    )
+
+    results = set()
+    for q in (personal_q, dept_q, shared_q):
+        rows = await db.execute(q)
+        for (kb_id,) in rows.all():
+            results.add(str(kb_id))
+
+    return list(results)
+
+
+# ---------------------------------------------------------------------------
 # Milvus retrieval
 # ---------------------------------------------------------------------------
 
@@ -75,16 +115,14 @@ async def retrieve(
     query: str,
     top_k: int = 5,
 ) -> list[dict[str, Any]]:
-    """Search Milvus collections for chunks most similar to *query*.
+    """Search the global Milvus collection for chunks matching *query*.
 
-    For each knowledge-base ID a separate collection ``kb_{kb_id}`` is
-    queried.  Results from all collections are merged, sorted by descending
-    score, and the top *top_k* entries are returned.
-
-    The function degrades gracefully: if Milvus is unreachable or a
-    collection does not exist, the error is logged and that collection is
-    skipped.
+    Uses a filter expression ``kb_id in [...]`` to restrict results to the
+    given knowledge base IDs.
     """
+    if not kb_ids:
+        return []
+
     try:
         from pymilvus import Collection, connections
     except ImportError:
@@ -102,43 +140,52 @@ async def retrieve(
         logger.warning("Could not connect to Milvus at %s", settings.milvus_uri)
         return []
 
-    all_results: list[dict[str, Any]] = []
+    try:
+        from pymilvus import utility
 
-    for kb_id in kb_ids:
-        collection_name = f"kb_{kb_id}"
-        try:
-            collection = Collection(collection_name)
-            collection.load()
+        if not utility.has_collection(GLOBAL_COLLECTION):
+            logger.info("Collection %s does not exist yet", GLOBAL_COLLECTION)
+            return []
 
-            search_params = {
-                "metric_type": "COSINE",
-                "params": {"nprobe": 16},
-            }
+        collection = Collection(GLOBAL_COLLECTION)
+        collection.load()
 
-            results = collection.search(
-                data=[query_vector],
-                anns_field="embedding",
-                param=search_params,
-                limit=top_k,
-                output_fields=["text", "doc_id", "chunk_index"],
+        # Build filter expression
+        ids_str = ", ".join(f'"{kb_id}"' for kb_id in kb_ids)
+        filter_expr = f"kb_id in [{ids_str}]"
+
+        search_params = {
+            "metric_type": "COSINE",
+            "params": {"nprobe": 16},
+        }
+
+        results = collection.search(
+            data=[query_vector],
+            anns_field="embedding",
+            param=search_params,
+            limit=top_k,
+            expr=filter_expr,
+            output_fields=["text", "doc_id", "kb_id", "chunk_index"],
+        )
+
+        all_results: list[dict[str, Any]] = []
+        for hit in results[0]:
+            all_results.append(
+                {
+                    "score": hit.score,
+                    "text": hit.entity.get("text", ""),
+                    "doc_id": hit.entity.get("doc_id", ""),
+                    "kb_id": hit.entity.get("kb_id", ""),
+                    "chunk_index": hit.entity.get("chunk_index", 0),
+                }
             )
 
-            for hit in results[0]:
-                all_results.append(
-                    {
-                        "score": hit.score,
-                        "text": hit.entity.get("text", ""),
-                        "doc_id": hit.entity.get("doc_id", ""),
-                        "chunk_index": hit.entity.get("chunk_index", 0),
-                        "kb_id": kb_id,
-                    }
-                )
-        except Exception:
-            logger.warning("Failed to query collection %s", collection_name, exc_info=True)
+        all_results.sort(key=lambda x: x["score"], reverse=True)
+        return all_results[:top_k]
 
-    # Sort by score descending and take top_k
-    all_results.sort(key=lambda x: x["score"], reverse=True)
-    return all_results[:top_k]
+    except Exception:
+        logger.warning("Failed to query collection %s", GLOBAL_COLLECTION, exc_info=True)
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -151,12 +198,7 @@ async def get_kb_context(
     knowledge_base_id: str = "",
     query: str = "",
 ) -> str:
-    """Build a RAG context string from a single knowledge base.
-
-    The *db* parameter is accepted for backward compatibility with existing
-    callers but is no longer required — the context is built entirely from
-    Milvus retrieval.
-    """
+    """Build a RAG context string from a single knowledge base."""
     results = await retrieve([knowledge_base_id], query, top_k=5)
     if not results:
         return ""

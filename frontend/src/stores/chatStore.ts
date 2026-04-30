@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import api from '../api/client';
 import { createSSEStream } from '../hooks/useSSE';
-import type { Conversation, Message, SSEEvent } from '../types';
+import type { Conversation, KnowledgeBase, Message, Skill, SSEEvent } from '../types';
 
 interface ChatState {
   conversations: Conversation[];
@@ -9,10 +9,19 @@ interface ChatState {
   messages: Message[];
   agentEvents: SSEEvent[];
   isStreaming: boolean;
+  skills: Skill[];
+  knowledgeBases: KnowledgeBase[];
   fetchConversations: () => Promise<void>;
   createConversation: (title: string, mode: 'normal' | 'agentic') => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
+  updateConversationMode: (id: string, mode: 'normal' | 'agentic') => Promise<void>;
+  updateConversationSkill: (id: string, skillId: string | null) => Promise<void>;
+  updateConversationKB: (id: string, kbId: string | null) => Promise<void>;
+  updateConversationTools: (id: string, tools: string[]) => Promise<void>;
+  fetchSkills: () => Promise<void>;
+  seedSkills: () => Promise<void>;
+  fetchKnowledgeBases: () => Promise<void>;
   sendMessage: (content: string) => Promise<void>;
 }
 
@@ -25,6 +34,8 @@ export const useChatStore = create<ChatState>()((set, get) => {
     messages: [],
     agentEvents: [],
     isStreaming: false,
+    skills: [],
+    knowledgeBases: [],
 
     fetchConversations: async () => {
       try {
@@ -73,6 +84,85 @@ export const useChatStore = create<ChatState>()((set, get) => {
       }
     },
 
+    updateConversationMode: async (id: string, mode: 'normal' | 'agentic') => {
+      try {
+        await api.patch(`/api/conversations/${id}`, { mode });
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === id ? { ...c, mode } : c,
+          ),
+        }));
+      } catch (e) {
+        console.error('Failed to update conversation mode:', e);
+      }
+    },
+
+    updateConversationSkill: async (id: string, skillId: string | null) => {
+      try {
+        await api.patch(`/api/conversations/${id}`, { skill_id: skillId || '' });
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === id ? { ...c, skill_id: skillId } : c,
+          ),
+        }));
+      } catch (e) {
+        console.error('Failed to update conversation skill:', e);
+      }
+    },
+
+    fetchSkills: async () => {
+      try {
+        const res = await api.get('/api/skills');
+        set({ skills: res.data as Skill[] });
+      } catch (e) {
+        console.error('Failed to fetch skills:', e);
+      }
+    },
+
+    seedSkills: async () => {
+      try {
+        await api.post('/api/skills/seed');
+        await get().fetchSkills();
+      } catch (e) {
+        console.error('Failed to seed skills:', e);
+      }
+    },
+
+    fetchKnowledgeBases: async () => {
+      try {
+        const res = await api.get('/api/knowledge/bases');
+        set({ knowledgeBases: res.data as KnowledgeBase[] });
+      } catch (e) {
+        console.error('Failed to fetch knowledge bases:', e);
+      }
+    },
+
+    updateConversationKB: async (id: string, kbId: string | null) => {
+      try {
+        await api.patch(`/api/conversations/${id}`, { knowledge_base_id: kbId || '' });
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === id ? { ...c, knowledge_base_id: kbId } : c,
+          ),
+        }));
+      } catch (e) {
+        console.error('Failed to update conversation KB:', e);
+      }
+    },
+
+    updateConversationTools: async (id: string, tools: string[]) => {
+      try {
+        await api.patch(`/api/conversations/${id}`, { enabled_tools: tools });
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === id ? { ...c, enabled_tools: tools.length > 0 ? tools : null } : c,
+          ),
+        }));
+      } catch (e) {
+        console.error('Failed to update conversation tools:', e);
+      }
+    },
+
     sendMessage: async (content: string) => {
       const { currentConversationId } = get();
 
@@ -83,6 +173,22 @@ export const useChatStore = create<ChatState>()((set, get) => {
 
       const convId = get().currentConversationId;
       if (!convId) return;
+
+      // Update conversation title to first user message (truncated)
+      const conv = get().conversations.find((c) => c.id === convId);
+      if (conv && conv.title === 'New Conversation') {
+        const truncated = content.length > 20 ? content.slice(0, 20) + '...' : content;
+        try {
+          await api.patch(`/api/conversations/${convId}`, { title: truncated });
+          set((state) => ({
+            conversations: state.conversations.map((c) =>
+              c.id === convId ? { ...c, title: truncated } : c,
+            ),
+          }));
+        } catch (e) {
+          console.error('Failed to update conversation title:', e);
+        }
+      }
 
       // Optimistically add user message
       const userMessage: Message = {

@@ -26,7 +26,6 @@ class KnowledgeBaseResponse(BaseModel):
     embedding_model: str
     chunk_size: int
     chunk_overlap: int
-    milvus_collection: str | None = None
     document_count: int = 0
     created_at: datetime
     updated_at: datetime | None = None
@@ -55,3 +54,17 @@ class DocumentUploadResponse(BaseModel):
     id: uuid.UUID
     title: str
     status: str
+
+
+class KnowledgeShareCreate(BaseModel):
+    user_id: uuid.UUID
+
+
+class KnowledgeShareResponse(BaseModel):
+    id: uuid.UUID
+    knowledge_base_id: uuid.UUID
+    shared_with_user_id: uuid.UUID
+    shared_with_username: str = ""
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

@@ -13,6 +13,7 @@ from app.schemas.conversation import (
     ConversationCreate,
     ConversationListResponse,
     ConversationResponse,
+    ConversationUpdate,
 )
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
@@ -86,6 +87,30 @@ async def get_conversation(
 ):
     """Get a single conversation by ID (must belong to current user)."""
     return await _get_user_conversation(conversation_id, user, db)
+
+
+@router.patch("/{conversation_id}", response_model=ConversationResponse)
+async def update_conversation(
+    conversation_id: uuid.UUID,
+    body: ConversationUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a conversation's title, mode, skill, knowledge base, or tools."""
+    conversation = await _get_user_conversation(conversation_id, user, db)
+    if body.title is not None:
+        conversation.title = body.title
+    if body.mode is not None:
+        conversation.mode = body.mode
+    if body.skill_id is not None:
+        conversation.skill_id = uuid.UUID(body.skill_id) if body.skill_id else None
+    if body.knowledge_base_id is not None:
+        conversation.knowledge_base_id = uuid.UUID(body.knowledge_base_id) if body.knowledge_base_id else None
+    if body.enabled_tools is not None:
+        conversation.enabled_tools = body.enabled_tools if body.enabled_tools else None
+    await db.commit()
+    await db.refresh(conversation)
+    return conversation
 
 
 @router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)

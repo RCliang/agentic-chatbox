@@ -14,6 +14,14 @@ class ConversationCreate(BaseModel):
     tool_ids: list[str] | None = None
 
 
+class ConversationUpdate(BaseModel):
+    title: str | None = None
+    mode: str | None = None
+    skill_id: str | None = None
+    knowledge_base_id: str | None = None
+    enabled_tools: list[str] | None = None
+
+
 class ConversationResponse(BaseModel):
     id: uuid.UUID
     title: str
@@ -31,6 +39,9 @@ class ConversationListResponse(BaseModel):
     id: uuid.UUID
     title: str
     mode: str
+    skill_id: uuid.UUID | None = None
+    knowledge_base_id: uuid.UUID | None = None
+    enabled_tools: list | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

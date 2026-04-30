@@ -1,6 +1,6 @@
 """Authentication router — login and current-user endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,3 +33,20 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 async def get_me(current_user: User = Depends(get_current_user)):
     """Return the currently authenticated user's profile."""
     return UserResponse.model_validate(current_user)
+
+
+@router.get("/users/search", response_model=list[UserResponse])
+async def search_users(
+    q: str = Query(..., min_length=1),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Search users by username or display_name (case-insensitive, max 10 results)."""
+    result = await db.execute(
+        select(User)
+        .where(
+            (User.username.ilike(f"%{q}%")) | (User.display_name.ilike(f"%{q}%"))
+        )
+        .limit(10)
+    )
+    return [UserResponse.model_validate(u) for u in result.scalars().all()]

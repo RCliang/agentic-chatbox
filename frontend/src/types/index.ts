@@ -34,3 +34,40 @@ export interface SSEEvent {
   event: 'text' | 'thinking' | 'tool_call' | 'tool_result' | 'done';
   data: unknown;
 }
+
+export interface SkillToolItem {
+  name: string;
+  when: string;
+  required: boolean;
+}
+
+export interface SkillRefItem {
+  type: 'knowledge_base' | 'text' | 'url';
+  source: string;
+  title: string;
+  inject: 'always' | 'on_demand';
+}
+
+export interface SkillExampleItem {
+  user: string;
+  assistant: string;
+}
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string | null;
+  instructions: string;
+  tools: SkillToolItem[] | null;
+  references: SkillRefItem[] | null;
+  examples: SkillExampleItem[] | null;
+  knowledge_base_id: string | null;
+  is_builtin: boolean;
+  created_at: string;
+}
+
+export interface KnowledgeBase {
+  id: string;
+  name: string;
+  description: string | null;
+}
