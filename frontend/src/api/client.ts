@@ -23,4 +23,16 @@ api.interceptors.response.use(
   },
 );
 
+export async function resumeInterruptAPI(conversationId: string, action: string, payload: Record<string, unknown> = {}) {
+  return api.post('/api/chat/resume', {
+    conversation_id: conversationId,
+    action,
+    payload,
+  });
+}
+
+export async function getConversationStatus(conversationId: string) {
+  return api.get(`/api/chat/conversations/${conversationId}/status`);
+}
+
 export default api;
