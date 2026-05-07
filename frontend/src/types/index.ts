@@ -31,8 +31,33 @@ export interface Message {
 }
 
 export interface SSEEvent {
-  event: 'text' | 'thinking' | 'tool_call' | 'tool_result' | 'done';
+  event: 'text' | 'thinking' | 'tool_call' | 'tool_result' | 'done'
+    | 'node_enter' | 'node_exit' | 'plan' | 'plan_step_update' | 'interrupt';
   data: unknown;
+}
+
+export interface PlanStep {
+  id: string;
+  title: string;
+  description: string;
+  status: 'pending' | 'running' | 'done' | 'failed';
+}
+
+export interface InterruptData {
+  type: 'plan' | 'tool';
+  payload: {
+    steps?: PlanStep[];
+    tool_name?: string;
+    arguments?: Record<string, unknown>;
+    call_id?: string;
+  };
+}
+
+export interface NodeStatus {
+  node: string;
+  label: string;
+  status: 'running' | 'done';
+  duration_ms?: number;
 }
 
 export interface SkillToolItem {
@@ -45,7 +70,8 @@ export interface SkillRefItem {
   type: 'knowledge_base' | 'text' | 'url';
   source: string;
   title: string;
-  inject: 'always' | 'on_demand';
+  inject: 'always' | 'on_demand' | 'on_step';
+  match_tools?: string[];
 }
 
 export interface SkillExampleItem {
@@ -63,6 +89,9 @@ export interface Skill {
   examples: SkillExampleItem[] | null;
   knowledge_base_id: string | null;
   is_builtin: boolean;
+  planning_mode: 'auto' | 'always' | 'never';
+  confirm_plan: boolean;
+  confirm_tools: string[] | null;
   created_at: string;
 }
 
