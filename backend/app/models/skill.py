@@ -1,6 +1,6 @@
 """Skill model — modular skill definition with progressive loading support."""
 
-from sqlalchemy import Boolean, ForeignKey, JSON, String, Text, Uuid
+from sqlalchemy import Boolean, ForeignKey, JSON, String, Text, text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseMixin
@@ -25,6 +25,13 @@ class Skill(BaseMixin):
         ForeignKey("knowledge_bases.id"),
         nullable=True,
     )
+
+    # ---- Planning ----
+    planning_mode: Mapped[str] = mapped_column(
+        String(20), default="auto", server_default="auto"
+    )
+    confirm_plan: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    confirm_tools: Mapped[list | None] = mapped_column(JSON, default=None)
 
     # relationships
     conversations: Mapped[list["Conversation"]] = relationship(

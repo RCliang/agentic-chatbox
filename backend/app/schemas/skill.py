@@ -24,7 +24,8 @@ class SkillRefItem(BaseModel):
     type: Literal["knowledge_base", "text", "url"]
     source: str
     title: str = ""
-    inject: Literal["always", "on_demand"] = "on_demand"
+    inject: Literal["always", "on_demand", "on_step"] = "on_demand"
+    match_tools: list[str] | None = None
 
 
 class SkillExampleItem(BaseModel):
@@ -46,6 +47,9 @@ class SkillCreate(BaseModel):
     references: list[SkillRefItem] | None = None
     examples: list[SkillExampleItem] | None = None
     knowledge_base_id: str | None = None
+    planning_mode: str = "auto"
+    confirm_plan: bool = True
+    confirm_tools: list[str] | None = None
 
 
 class SkillUpdate(BaseModel):
@@ -56,6 +60,9 @@ class SkillUpdate(BaseModel):
     references: list[SkillRefItem] | None = None
     examples: list[SkillExampleItem] | None = None
     knowledge_base_id: str | None = None
+    planning_mode: str | None = None
+    confirm_plan: bool | None = None
+    confirm_tools: list[str] | None = None
 
 
 class SkillResponse(BaseModel):
@@ -67,6 +74,9 @@ class SkillResponse(BaseModel):
     references: list[SkillRefItem] | None
     examples: list[SkillExampleItem] | None
     knowledge_base_id: uuid.UUID | None
+    planning_mode: str
+    confirm_plan: bool
+    confirm_tools: list[str] | None
     is_builtin: bool
     created_at: datetime
 
