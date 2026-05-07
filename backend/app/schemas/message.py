@@ -23,3 +23,9 @@ class ChatSendRequest(BaseModel):
     conversation_id: str
     content: str
     attachments: list[str] | None = None
+
+
+class ResumeRequest(BaseModel):
+    conversation_id: str
+    action: str  # "approve" | "reject" | "edit"
+    payload: dict = {}

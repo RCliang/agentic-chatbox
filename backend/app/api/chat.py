@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models import Conversation, Message, User
-from app.schemas.message import ChatSendRequest, MessageResponse
-from app.services.agent import agent_loop
+from app.schemas.message import ChatSendRequest, MessageResponse, ResumeRequest
+from app.services.agent import agent_loop, resume_agent, get_agent_status
 from app.services.chat import normal_chat_stream
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -76,3 +76,48 @@ async def get_messages(
     )
     msg_result = await db.execute(msg_stmt)
     return [MessageResponse.model_validate(m) for m in msg_result.scalars().all()]
+
+
+@router.post("/resume")
+async def resume_conversation(
+    body: ResumeRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resume an interrupted agent graph execution."""
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == body.conversation_id,
+            Conversation.user_id == user.id,
+        )
+    )
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    async def event_generator():
+        async for event in resume_agent(conversation, body.action, body.payload, db):
+            yield f"event: {event['event']}\ndata: {event['data']}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.get("/conversations/{conversation_id}/status")
+async def conversation_status(
+    conversation_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check if a conversation has a pending interrupt."""
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user.id,
+        )
+    )
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    status = await get_agent_status(conversation_id)
+    return status
