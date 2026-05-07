@@ -3,6 +3,9 @@ import { useChatStore } from '../stores/chatStore';
 import { useThemeStore } from '../stores/themeStore';
 import MessageBubble from './MessageBubble';
 import AgentStep from './AgentStep';
+import NodeTracker from './NodeTracker';
+import PlanView from './PlanView';
+import InterruptDialog from './InterruptDialog';
 
 interface AttachedFile {
   file: File;
@@ -28,6 +31,11 @@ export default function ChatArea() {
   const updateConversationKB = useChatStore((s) => s.updateConversationKB);
   const updateConversationTools = useChatStore((s) => s.updateConversationTools);
   const skills = useChatStore((s) => s.skills);
+
+  const interruptData = useChatStore((s) => s.interruptData);
+  const planSteps = useChatStore((s) => s.planSteps);
+  const activeNodes = useChatStore((s) => s.activeNodes);
+  const resumeInterrupt = useChatStore((s) => s.resumeInterrupt);
   const knowledgeBases = useChatStore((s) => s.knowledgeBases);
 
   const theme = useThemeStore((s) => s.theme);
@@ -109,7 +117,7 @@ export default function ChatArea() {
               <button
                 onClick={() => updateConversationMode(currentConversation.id, 'normal')}
                 disabled={isStreaming || currentConversation.mode === 'normal'}
-                className="px-4 py-1.5 text-xs font-medium transition-colors disabled:cursor-default cursor-pointer"
+                className="px-4 py-1.5 text-xs font-medium transition-colors disabled:cursor-default cursor-pointer hover-lift hover-press"
                 style={{
                   background: currentConversation.mode === 'normal' ? 'var(--bg-surface)' : undefined,
                   color: currentConversation.mode === 'normal' ? 'var(--text-primary)' : 'var(--text-muted)',
@@ -120,7 +128,7 @@ export default function ChatArea() {
               <button
                 onClick={() => updateConversationMode(currentConversation.id, 'agentic')}
                 disabled={isStreaming || currentConversation.mode === 'agentic'}
-                className="px-4 py-1.5 text-xs font-medium transition-colors disabled:cursor-default cursor-pointer"
+                className="px-4 py-1.5 text-xs font-medium transition-colors disabled:cursor-default cursor-pointer hover-lift hover-press"
                 style={{
                   background: currentConversation.mode === 'agentic' ? 'var(--accent-surface)' : undefined,
                   color: currentConversation.mode === 'agentic' ? 'var(--accent-light)' : 'var(--text-muted)',
@@ -136,7 +144,7 @@ export default function ChatArea() {
 
         <button
           onClick={toggleTheme}
-          className="absolute right-6 w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer"
+          className="absolute right-6 w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer hover-scale hover-press"
           style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-light)' }}
           title={theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
         >
@@ -167,6 +175,20 @@ export default function ChatArea() {
         {agentEvents.map((evt, idx) => (
           <AgentStep key={`agent-${idx}`} event={evt} />
         ))}
+
+          {/* Node execution tracker */}
+          {activeNodes.length > 0 && <NodeTracker nodes={activeNodes} />}
+
+          {/* Plan view */}
+          {planSteps.length > 0 && <PlanView steps={planSteps} />}
+
+          {/* Interrupt dialog */}
+          {interruptData && (
+            <InterruptDialog
+              data={interruptData}
+              onAction={(action, payload) => resumeInterrupt(action, payload)}
+            />
+          )}
 
         {isStreaming && (
           <div className="flex justify-start mb-4">
@@ -199,7 +221,7 @@ export default function ChatArea() {
                   ? '仅在 Agentic 模式下可选择 Skill'
                   : `${skill.description || skill.name}${skill.tools?.length ? ` | 工具: ${skill.tools.length}` : ''}${skill.references?.length ? ` | 参考: ${skill.references.length}` : ''}${skill.examples?.length ? ` | 示例: ${skill.examples.length}` : ''}`
                 }
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-all hover-glow hover-press ${
                   disabled && !isSelected ? 'cursor-not-allowed' : 'cursor-pointer'
                 }`}
                 style={
@@ -224,7 +246,7 @@ export default function ChatArea() {
             <button
               onClick={() => setKbDropdownOpen(!kbDropdownOpen)}
               disabled={isStreaming}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover-glow-success hover-press"
               style={
                 selectedKB
                   ? { background: 'var(--success-muted)', color: 'var(--success)', borderColor: 'var(--success)' }
@@ -271,7 +293,7 @@ export default function ChatArea() {
           <button
             onClick={() => handleToolToggle('web_search')}
             disabled={isStreaming}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover-glow hover-press"
             style={
               enabledTools.includes('web_search')
                 ? { background: 'var(--accent-surface)', color: 'var(--accent-light)', borderColor: 'var(--accent)' }
@@ -289,7 +311,7 @@ export default function ChatArea() {
           <button
             onClick={() => handleToolToggle('knowledge_graph')}
             disabled={isStreaming}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover-glow hover-press"
             style={
               enabledTools.includes('knowledge_graph')
                 ? { background: 'var(--accent-surface)', color: 'var(--accent-light)', borderColor: 'var(--accent)' }
@@ -347,7 +369,7 @@ export default function ChatArea() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isStreaming}
-            className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer hover-scale hover-press"
             style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-light)' }}
             title="上传文件"
           >
@@ -369,7 +391,7 @@ export default function ChatArea() {
           <button
             type="submit"
             disabled={isStreaming || (!input.trim() && attachedFiles.length === 0)}
-            className="px-6 py-3 text-white rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            className="px-6 py-3 text-white rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer hover-lift hover-press"
             style={{ background: 'var(--accent)' }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--accent)')}
