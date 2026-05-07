@@ -20,12 +20,16 @@ export default function AgentStep({ event }: AgentStepProps) {
     }
 
     case 'tool_call': {
-      const data = event.data as { name: string; arguments: string };
+      const data = event.data as { name: string; arguments: unknown };
       let argsStr = '';
-      try {
-        argsStr = JSON.stringify(JSON.parse(data.arguments), null, 2);
-      } catch {
-        argsStr = data.arguments;
+      if (typeof data.arguments === 'string') {
+        try {
+          argsStr = JSON.stringify(JSON.parse(data.arguments), null, 2);
+        } catch {
+          argsStr = data.arguments;
+        }
+      } else {
+        argsStr = JSON.stringify(data.arguments, null, 2);
       }
       return (
         <div className="mb-2 rounded-lg px-4 py-2" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
@@ -38,7 +42,8 @@ export default function AgentStep({ event }: AgentStepProps) {
     }
 
     case 'tool_result': {
-      const content = (event.data as { content: string }).content;
+      const data = event.data as { name: string; result: string };
+      const content = data.result;
       const isLong = content.length > 300;
       return (
         <div className="mb-2 rounded-lg px-4 py-2" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
@@ -59,6 +64,14 @@ export default function AgentStep({ event }: AgentStepProps) {
         </div>
       );
     }
+
+    case 'node_enter':
+    case 'node_exit':
+    case 'plan':
+    case 'plan_step_update':
+    case 'interrupt':
+      // These are handled by dedicated components (NodeTracker, PlanView, InterruptDialog)
+      return null;
 
     default:
       return null;
