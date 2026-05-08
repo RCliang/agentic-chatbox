@@ -11,6 +11,9 @@ interface SkillFormData {
   name: string;
   description: string;
   instructions: string;
+  planning_mode: 'auto' | 'always' | 'never';
+  confirm_plan: boolean;
+  confirm_tools: string[];
   tools: SkillToolItem[];
   references: SkillRefItem[];
   examples: SkillExampleItem[];
@@ -20,6 +23,9 @@ const EMPTY_FORM: SkillFormData = {
   name: '',
   description: '',
   instructions: '',
+  planning_mode: 'auto',
+  confirm_plan: true,
+  confirm_tools: [],
   tools: [],
   references: [],
   examples: [],
@@ -28,6 +34,13 @@ const EMPTY_FORM: SkillFormData = {
 const EMPTY_TOOL: SkillToolItem = { name: '', when: '', required: false };
 const EMPTY_REF: SkillRefItem = { type: 'text', source: '', title: '', inject: 'on_demand' };
 const EMPTY_EXAMPLE: SkillExampleItem = { user: '', assistant: '' };
+
+const AVAILABLE_TOOLS = [
+  { name: 'web_search', label: '联网搜索' },
+  { name: 'web_reader', label: '网页读取' },
+  { name: 'knowledge_search', label: '知识库搜索' },
+  { name: 'knowledge_graph', label: '知识图谱' },
+];
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -84,6 +97,9 @@ export default function SkillsPage() {
       name: skill.name,
       description: skill.description ?? '',
       instructions: skill.instructions,
+      planning_mode: skill.planning_mode ?? 'auto',
+      confirm_plan: skill.confirm_plan ?? true,
+      confirm_tools: skill.confirm_tools ?? [],
       tools: skill.tools ?? [],
       references: skill.references ?? [],
       examples: skill.examples ?? [],
@@ -108,6 +124,9 @@ export default function SkillsPage() {
       name: form.name,
       description: form.description || null,
       instructions: form.instructions,
+      planning_mode: form.planning_mode,
+      confirm_plan: form.confirm_plan,
+      confirm_tools: form.confirm_tools.length > 0 ? form.confirm_tools : null,
       tools: form.tools.length > 0 ? form.tools.filter((t) => t.name.trim()) : null,
       references: form.references.length > 0 ? form.references.filter((r) => r.source.trim()) : null,
       examples: form.examples.length > 0 ? form.examples.filter((ex) => ex.user.trim()) : null,
@@ -200,7 +219,7 @@ export default function SkillsPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/')}
-            className="cursor-pointer transition-colors"
+            className="cursor-pointer transition-colors hover-scale hover-press"
             style={{ color: 'var(--text-secondary)' }}
             onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
             onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
@@ -214,7 +233,7 @@ export default function SkillsPage() {
         </div>
         <button
           onClick={openCreate}
-          className="px-4 py-2 rounded-lg transition-colors font-medium cursor-pointer"
+          className="px-4 py-2 rounded-lg transition-colors font-medium cursor-pointer hover-lift hover-press"
           style={{ background: 'var(--accent)', color: '#fff' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--accent)')}
@@ -241,7 +260,7 @@ export default function SkillsPage() {
             return (
               <div
                 key={skill.id}
-                className="rounded-lg p-4 border-l-2"
+                className="rounded-lg p-4 border-l-2 transition-all hover:bg-[var(--bg-card-hover)]"
                 style={{
                   background: 'var(--bg-card)',
                   borderLeftColor: skill.is_builtin ? 'var(--accent)' : 'var(--success)',
@@ -260,6 +279,15 @@ export default function SkillsPage() {
                   >
                     {skill.is_builtin ? '内置' : '自定义'}
                   </span>
+                  <span
+                    className="text-xs px-2 py-0.5 rounded"
+                    style={{
+                      background: skill.planning_mode === 'always' ? 'var(--warning-muted)' : skill.planning_mode === 'never' ? 'var(--bg-surface)' : 'var(--accent-surface)',
+                      color: skill.planning_mode === 'always' ? 'var(--warning)' : skill.planning_mode === 'never' ? 'var(--text-muted)' : 'var(--accent-light)',
+                    }}
+                  >
+                    {skill.planning_mode === 'always' ? '始终计划' : skill.planning_mode === 'never' ? '无计划' : '自动'}
+                  </span>
                   {/* Module counts */}
                   <div className="flex gap-2 ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>
                     {toolCount > 0 && <span>{toolCount} tools</span>}
@@ -275,7 +303,7 @@ export default function SkillsPage() {
                 {/* Expand toggle */}
                 <button
                   onClick={() => setExpandedCard(isExpanded ? null : skill.id)}
-                  className="text-xs mb-2 cursor-pointer"
+                  className="text-xs mb-2 cursor-pointer transition-colors hover-scale"
                   style={{ color: 'var(--accent-light)' }}
                   onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
                   onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
@@ -383,7 +411,7 @@ export default function SkillsPage() {
                 <div className="flex gap-2 mt-2">
                   <button
                     onClick={() => openEdit(skill)}
-                    className="text-sm px-3 py-1 rounded cursor-pointer transition-colors"
+                    className="text-sm px-3 py-1 rounded cursor-pointer transition-colors hover-lift hover-press"
                     style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
                     onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.7')}
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
@@ -393,7 +421,7 @@ export default function SkillsPage() {
                   <button
                     onClick={() => !skill.is_builtin && handleDelete(skill.id)}
                     disabled={skill.is_builtin}
-                    className={`text-sm px-3 py-1 rounded transition-colors ${skill.is_builtin ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                    className={`text-sm px-3 py-1 rounded transition-colors hover-lift hover-press ${skill.is_builtin ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                     style={{
                       background: 'var(--bg-surface)',
                       color: skill.is_builtin ? 'var(--text-muted)' : 'var(--danger)',
@@ -461,6 +489,55 @@ export default function SkillsPage() {
                 />
               </div>
 
+              {/* ---- Planning & Confirmation Section ---- */}
+              <div className="rounded-lg p-3" style={{ border: '1px solid var(--border-light)' }}>
+                <div className={sectionTitleCls} style={{ color: 'var(--text-primary)' }}>
+                  <span>计划模式 & 确认</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelCls} style={{ color: 'var(--text-secondary)' }}>计划模式</label>
+                    <select
+                      value={form.planning_mode}
+                      onChange={(e) => setForm({ ...form, planning_mode: e.target.value as SkillFormData['planning_mode'] })}
+                      {...inputProps()}
+                    >
+                      <option value="auto">自动判断 (auto)</option>
+                      <option value="always">始终制定计划 (always)</option>
+                      <option value="never">从不制定计划 (never)</option>
+                    </select>
+                    <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                      auto: 由 LLM 判断是否需要计划；always: 每次都先制定计划；never: 直接回答
+                    </p>
+                  </div>
+                  <div>
+                    <label className={labelCls} style={{ color: 'var(--text-secondary)' }}>计划确认</label>
+                    <label className="flex items-center gap-2 mt-2 cursor-pointer" style={{ color: 'var(--text-primary)' }}>
+                      <input
+                        type="checkbox"
+                        checked={form.confirm_plan}
+                        onChange={(e) => setForm({ ...form, confirm_plan: e.target.checked })}
+                        style={{ accentColor: 'var(--accent)' }}
+                      />
+                      <span className="text-sm">执行计划前需要用户确认</span>
+                    </label>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <label className={labelCls} style={{ color: 'var(--text-secondary)' }}>需确认的工具 (每行一个工具名)</label>
+                  <textarea
+                    value={form.confirm_tools.join('\n')}
+                    onChange={(e) => setForm({ ...form, confirm_tools: e.target.value.split('\n').filter((s) => s.trim()) })}
+                    rows={2}
+                    {...inputProps('resize-y')}
+                    placeholder="web_search&#10;web_reader"
+                  />
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                    列出调用前需要用户确认的工具名称，留空则所有工具自动执行
+                  </p>
+                </div>
+              </div>
+
               {/* ---- Tools Section ---- */}
               <div className="rounded-lg p-3" style={{ border: '1px solid var(--border-light)' }}>
                 <div className={sectionTitleCls} style={{ color: 'var(--text-primary)' }}>
@@ -468,7 +545,7 @@ export default function SkillsPage() {
                   <button
                     type="button"
                     onClick={() => setForm((f) => ({ ...f, tools: [...f.tools, { ...EMPTY_TOOL }] }))}
-                    className="text-xs cursor-pointer"
+                    className="text-xs cursor-pointer transition-all hover-scale"
                     style={{ color: 'var(--accent-light)' }}
                     onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
@@ -478,16 +555,21 @@ export default function SkillsPage() {
                 </div>
                 {form.tools.map((t, i) => (
                   <div key={i} className="flex items-start gap-2 mb-2">
-                    <input
+                    <select
                       value={t.name}
                       onChange={(e) => updateTool(i, { name: e.target.value })}
-                      {...inputProps('w-32 shrink-0')}
-                      placeholder="工具名"
-                    />
+                      {...inputProps('min-w-0')}
+                      style={{ ...inputStyle, flex: '0 1 35%' }}
+                    >
+                      <option value="">选择工具</option>
+                      {AVAILABLE_TOOLS.map((at) => (
+                        <option key={at.name} value={at.name}>{at.label} ({at.name})</option>
+                      ))}
+                    </select>
                     <input
                       value={t.when}
                       onChange={(e) => updateTool(i, { when: e.target.value })}
-                      {...inputProps('flex-1')}
+                      {...inputProps('flex-1 min-w-0')}
                       placeholder="何时使用"
                     />
                     <label className="flex items-center gap-1 text-xs shrink-0 mt-2 cursor-pointer" style={{ color: 'var(--text-secondary)' }}>
@@ -521,7 +603,7 @@ export default function SkillsPage() {
                   <button
                     type="button"
                     onClick={() => setForm((f) => ({ ...f, references: [...f.references, { ...EMPTY_REF }] }))}
-                    className="text-xs cursor-pointer"
+                    className="text-xs cursor-pointer transition-all hover-scale"
                     style={{ color: 'var(--accent-light)' }}
                     onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
@@ -531,29 +613,32 @@ export default function SkillsPage() {
                 </div>
                 {form.references.map((r, i) => (
                   <div key={i} className="mb-3 rounded p-2 space-y-2" style={{ background: 'var(--bg-primary)' }}>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
+                      <input
+                        value={r.title}
+                        onChange={(e) => updateRef(i, { title: e.target.value })}
+                        {...inputProps('flex-1 min-w-0')}
+                        placeholder="标题"
+                      />
                       <select
                         value={r.type}
                         onChange={(e) => updateRef(i, { type: e.target.value as SkillRefItem['type'] })}
-                        {...inputProps('w-36 shrink-0')}
+                        {...inputProps('min-w-0')}
+                        style={{ ...inputStyle, flex: '0 1 20%' }}
                       >
                         <option value="text">文本</option>
                         <option value="knowledge_base">知识库</option>
                         <option value="url">URL</option>
                       </select>
-                      <input
-                        value={r.title}
-                        onChange={(e) => updateRef(i, { title: e.target.value })}
-                        {...inputProps('flex-1')}
-                        placeholder="标题"
-                      />
                       <select
                         value={r.inject}
                         onChange={(e) => updateRef(i, { inject: e.target.value as SkillRefItem['inject'] })}
-                        {...inputProps('w-28 shrink-0')}
+                        {...inputProps('min-w-0')}
+                        style={{ ...inputStyle, flex: '0 1 15%' }}
                       >
-                        <option value="always">始终注入</option>
-                        <option value="on_demand">按需注入</option>
+                        <option value="always">始终</option>
+                        <option value="on_demand">按需</option>
+                        <option value="on_step">步骤</option>
                       </select>
                       <button
                         type="button"
@@ -585,7 +670,7 @@ export default function SkillsPage() {
                   <button
                     type="button"
                     onClick={() => setForm((f) => ({ ...f, examples: [...f.examples, { ...EMPTY_EXAMPLE }] }))}
-                    className="text-xs cursor-pointer"
+                    className="text-xs cursor-pointer transition-all hover-scale"
                     style={{ color: 'var(--accent-light)' }}
                     onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
                     onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
@@ -641,7 +726,7 @@ export default function SkillsPage() {
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="px-4 py-2 rounded cursor-pointer transition-colors"
+                  className="px-4 py-2 rounded cursor-pointer transition-colors hover-bg hover-press"
                   style={{ color: 'var(--text-secondary)' }}
                   onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
                   onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
@@ -651,7 +736,7 @@ export default function SkillsPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 rounded cursor-pointer disabled:opacity-50 transition-colors"
+                  className="px-4 py-2 rounded cursor-pointer disabled:opacity-50 transition-colors hover-lift hover-press"
                   style={{
                     background: submitHover ? 'var(--accent-hover)' : 'var(--accent)',
                     color: '#fff',

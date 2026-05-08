@@ -15,15 +15,7 @@ async def lifespan(app: FastAPI):
     import app.models  # noqa: F401
 
     async with engine.begin() as conn:
-        # Drop and recreate skills table to pick up schema changes
-        # (safe because skills are re-seeded from BUILTIN_SKILLS on demand)
-        from sqlalchemy import text
-        # Clear FK references first
-        await conn.execute(text(
-            "UPDATE conversations SET skill_id = NULL WHERE skill_id IS NOT NULL"
-        ))
-        from app.models.skill import Skill as SkillModel
-        await conn.execute(text("DROP TABLE IF EXISTS skills CASCADE"))
+        # Create tables that don't exist yet (safe, no data loss)
         await conn.run_sync(Base.metadata.create_all)
     yield
 

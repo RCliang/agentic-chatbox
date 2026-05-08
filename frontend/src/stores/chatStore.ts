@@ -216,6 +216,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
       set({ isStreaming: true });
 
       await sse.stream('http://localhost:8000/api/chat/send', { conversation_id: convId, content }, (event: SSEEvent) => {
+        console.log('[SSE]', event.event, event.data);
         switch (event.event) {
           case 'text': {
             assistantContent += (event.data as { content: string }).content;
@@ -288,6 +289,27 @@ export const useChatStore = create<ChatState>()((set, get) => {
             break;
           }
           case 'done': {
+            // Persist accumulated agent events into the last assistant message
+            const doneEvents = get().agentEvents;
+            const donePlan = get().planSteps;
+            const doneNodes = get().activeNodes;
+            if (doneEvents.length > 0 || donePlan.length > 0 || doneNodes.length > 0) {
+              set((state) => {
+                const msgs = [...state.messages];
+                const lastMsg = msgs[msgs.length - 1];
+                if (lastMsg && lastMsg.role === 'assistant') {
+                  msgs[msgs.length - 1] = {
+                    ...lastMsg,
+                    agent_steps: {
+                      events: doneEvents.map((e) => ({ event: e.event, data: e.data })),
+                      plan: donePlan.length > 0 ? donePlan : undefined,
+                      nodes: doneNodes.length > 0 ? doneNodes : undefined,
+                    } as unknown as null,
+                  };
+                }
+                return { messages: msgs };
+              });
+            }
             set({ agentEvents: [], isStreaming: false, activeNodes: [], planSteps: [], interruptData: null });
             get().fetchConversations();
             break;

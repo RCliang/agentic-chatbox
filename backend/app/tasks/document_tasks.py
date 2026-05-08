@@ -13,7 +13,7 @@ from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.models.base import Base
 from app.models.knowledge_document import DocumentStatus, KnowledgeDocument
-from app.services.knowledge import GLOBAL_COLLECTION, chunk_text
+from app.services.knowledge import GLOBAL_COLLECTION, chunk_text, _milvus_connect
 
 logger = logging.getLogger(__name__)
 
@@ -129,12 +129,12 @@ async def _embed_and_insert(
     chunks: list[str],
 ) -> int:
     """Embed every chunk and insert into the global Milvus collection."""
-    from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
+    from pymilvus import Collection, CollectionSchema, DataType, FieldSchema
 
     from app.services.knowledge import get_embedding
 
     # Connect to Milvus
-    connections.connect(alias="default", uri=settings.milvus_uri)
+    _milvus_connect()
 
     # --- Determine embedding dimension by embedding the first chunk ---
     first_embedding = await get_embedding(chunks[0])

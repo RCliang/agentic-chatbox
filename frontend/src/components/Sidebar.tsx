@@ -31,7 +31,7 @@ export default function Sidebar() {
       <div className="p-3">
         <button
           onClick={() => createConversation('New Conversation', 'normal')}
-          className="w-full py-2 px-4 rounded-lg transition-colors text-sm font-medium cursor-pointer"
+          className="w-full py-2 px-4 rounded-lg transition-colors text-sm font-medium cursor-pointer hover-lift hover-press"
           style={{ background: 'var(--accent-surface)', color: 'var(--accent-light)', border: '1px solid var(--accent-muted)' }}
         >
           + 新建对话
@@ -46,7 +46,7 @@ export default function Sidebar() {
         {sortedConversations.map((conv: Conversation) => (
           <div
             key={conv.id}
-            className={`group flex items-center justify-between px-3 py-2.5 my-0.5 rounded-lg cursor-pointer transition-colors border-l-2 ${
+            className={`group flex items-center justify-between px-3 py-2.5 my-0.5 rounded-lg cursor-pointer transition-colors border-l-2 hover:bg-[var(--bg-card-hover)] ${
               currentConversationId === conv.id
                 ? ''
                 : 'border-transparent'
@@ -93,7 +93,7 @@ export default function Sidebar() {
       <div className="px-3 py-2 space-y-1" style={{ borderTop: '1px solid var(--border-color)' }}>
         <button
           onClick={() => navigate('/admin/knowledge')}
-          className="w-full py-2 px-4 rounded-lg transition-colors text-sm text-left flex items-center gap-2 cursor-pointer"
+          className="w-full py-2 px-4 rounded-lg transition-colors text-sm text-left flex items-center gap-2 cursor-pointer hover-nav hover-press"
           style={{ color: 'var(--text-secondary)' }}
           onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-card)'}
           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
@@ -106,7 +106,7 @@ export default function Sidebar() {
 
         <button
           onClick={() => navigate('/admin/skills')}
-          className="w-full py-2 px-4 rounded-lg transition-colors text-sm text-left flex items-center gap-2 cursor-pointer"
+          className="w-full py-2 px-4 rounded-lg transition-colors text-sm text-left flex items-center gap-2 cursor-pointer hover-nav hover-press"
           style={{ color: 'var(--text-secondary)' }}
           onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-card)'}
           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}

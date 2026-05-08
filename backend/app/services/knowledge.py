@@ -56,16 +56,30 @@ def chunk_text(text: str, chunk_size: int = 512, overlap: int = 50) -> list[str]
 
 
 async def get_embedding(text: str) -> list[float]:
-    """Return an embedding vector for *text* via the OpenAI-compatible API."""
+    """Return an embedding vector for *text* via the OpenAI-compatible API.
+
+    Uses embedding-specific settings (EMBEDDING_BASE_URL / EMBEDDING_API_KEY /
+    EMBEDDING_MODEL) when configured, otherwise falls back to the LLM settings.
+    """
+    base_url = settings.effective_embedding_base_url.rstrip("/")
+    model = settings.effective_embedding_model
+    api_key = settings.effective_embedding_api_key
+
+    logger.debug("get_embedding: url=%s model=%s text_len=%d", base_url, model, len(text))
+
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(
-            f"{settings.llm_base_url}/embeddings",
-            json={"input": text, "model": settings.llm_default_model},
-            headers={"Authorization": f"Bearer {settings.llm_api_key}"},
+            f"{base_url}/embeddings",
+            json={"input": text, "model": model},
+            headers={"Authorization": f"Bearer {api_key}"},
         )
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            logger.error(
+                "Embedding API error: status=%d url=%s model=%s body=%s",
+                resp.status_code, base_url, model, resp.text[:500],
+            )
+            resp.raise_for_status()
         data = resp.json()
-        # OpenAI returns {"data": [{"embedding": [...]}]}
         return data["data"][0]["embedding"]
 
 
@@ -106,6 +120,23 @@ async def get_accessible_kb_ids(db: AsyncSession, user: User) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Milvus connection helper
+# ---------------------------------------------------------------------------
+
+
+def _milvus_connect() -> None:
+    """Connect to Milvus using configured URI and optional credentials."""
+    from pymilvus import connections
+
+    kwargs: dict = {"alias": "default", "uri": settings.milvus_uri}
+    if settings.milvus_user:
+        kwargs["user"] = settings.milvus_user
+    if settings.milvus_password:
+        kwargs["password"] = settings.milvus_password
+    connections.connect(**kwargs)
+
+
+# ---------------------------------------------------------------------------
 # Milvus retrieval
 # ---------------------------------------------------------------------------
 
@@ -124,7 +155,7 @@ async def retrieve(
         return []
 
     try:
-        from pymilvus import Collection, connections
+        from pymilvus import Collection
     except ImportError:
         logger.warning("pymilvus not installed; retrieval is disabled")
         return []
@@ -132,10 +163,7 @@ async def retrieve(
     query_vector = await get_embedding(query)
 
     try:
-        connections.connect(
-            alias="default",
-            uri=settings.milvus_uri,
-        )
+        _milvus_connect()
     except Exception:
         logger.warning("Could not connect to Milvus at %s", settings.milvus_uri)
         return []

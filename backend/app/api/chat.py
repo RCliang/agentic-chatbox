@@ -1,8 +1,12 @@
 """Chat endpoints: send messages (SSE streaming) and retrieve history."""
 
+import json
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+
+logger = logging.getLogger(__name__)
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,8 +47,17 @@ async def send_message(
         stream_fn = lambda: normal_chat_stream(conversation, body.content, db)
 
     async def event_generator():
-        async for event in stream_fn():
-            yield f"event: {event['event']}\ndata: {event['data']}\n\n"
+        try:
+            print(f"[DEBUG] event_generator started, mode={conversation.mode}")
+            async for event in stream_fn():
+                print(f"[DEBUG] SSE event: {event['event']}")
+                yield f"event: {event['event']}\ndata: {event['data']}\n\n"
+            print("[DEBUG] event_generator finished normally")
+        except Exception as e:
+            print(f"[DEBUG] event_generator error: {e}")
+            import traceback; traceback.print_exc()
+            error_data = json.dumps({"error": "Internal agent error"})
+            yield f"event: done\ndata: {error_data}\n\n"
 
     return StreamingResponse(
         event_generator(),

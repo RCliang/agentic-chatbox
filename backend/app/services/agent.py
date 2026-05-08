@@ -249,9 +249,12 @@ async def agent_loop(
     }
 
     # 6. Compile and run graph
+    print("[DEBUG] agent_loop: getting checkpointer...")
     checkpointer = await get_checkpointer()
+    print("[DEBUG] agent_loop: checkpointer ready, building graph...")
     graph = build_graph()
     compiled = graph.compile(checkpointer=checkpointer)
+    print("[DEBUG] agent_loop: graph compiled, starting stream...")
 
     config = {"configurable": {"thread_id": str(conversation.id)}}
 
@@ -259,6 +262,7 @@ async def agent_loop(
     full_content = ""
 
     async for event in compiled.astream(initial_state, config=config, stream_mode="updates"):
+        logger.info("agent_loop: got stream event: %s", list(event.keys()))
         for node_name, node_output in event.items():
             if not isinstance(node_output, dict):
                 continue

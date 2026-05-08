@@ -78,8 +78,10 @@ async def router_node(state: AgentState) -> Command:
 
     if planning_mode == "never":
         goto = "agent"
+        events.append(thinking_event("直接回答模式，无需制定计划"))
     elif planning_mode == "always":
         goto = "planner"
+        events.append(thinking_event("该技能要求始终制定计划，进入规划模式"))
     else:
         # auto — ask LLM
         last_user = ""
@@ -90,18 +92,34 @@ async def router_node(state: AgentState) -> Command:
 
         response = await llm_client.chat(
             [
-                {"role": "system", "content": "Decide if this request needs a multi-step plan. Reply with JSON: {\"need_plan\": true/false}"},
+                {"role": "system", "content": (
+                    "You are a routing assistant. Decide if the user's request needs a multi-step plan or can be answered directly.\n\n"
+                    "MUST use planning mode (need_plan: true) when:\n"
+                    "- Writing long-form content: articles, reports, documents, essays, proposals, tutorials\n"
+                    "- Tasks requiring research + synthesis across multiple sources\n"
+                    "- Multi-step workflows (e.g. analyze data then generate report)\n"
+                    "- Complex comparisons or evaluations\n"
+                    "- Any task that would benefit from outlining before execution\n\n"
+                    "Can answer directly (need_plan: false) when:\n"
+                    "- Simple Q&A, factual lookups, definitions\n"
+                    "- Short translations or summaries (< 200 words)\n"
+                    "- Single tool calls (e.g. one web search)\n"
+                    "- Code snippets or quick fixes\n"
+                    "- Casual conversation\n\n"
+                    "Reply with JSON only: {\"need_plan\": true/false}"
+                )},
                 {"role": "user", "content": last_user},
             ],
             temperature=0,
             max_tokens=50,
         )
-        content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+        content = response.get("choices", [{}])[0].get("message", {}).get("content") or ""
         try:
             need_plan = json.loads(content).get("need_plan", False)
         except (json.JSONDecodeError, AttributeError):
             need_plan = False
         goto = "planner" if need_plan else "agent"
+        events.append(thinking_event(f"分析请求复杂度: {'需要制定计划' if need_plan else '可以直接回答'}"))
 
     elapsed = int((time.monotonic() - t0) * 1000)
     events.append(node_exit("router", elapsed))
@@ -141,6 +159,9 @@ async def agent_node(state: AgentState) -> dict:
         thinking = message.get("content", "") or ""
         if thinking:
             events.append(thinking_event(thinking))
+        else:
+            tool_names = [tc.get("function", {}).get("name", "?") for tc in tool_calls]
+            events.append(thinking_event(f"决定调用工具: {', '.join(tool_names)}"))
 
         messages.append(message)
 

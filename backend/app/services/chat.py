@@ -70,18 +70,27 @@ async def normal_chat_stream(
 
     # Append RAG context if knowledge_base_id is set
     if conversation.knowledge_base_id:
+        import logging
         from app.services.knowledge import get_kb_context
 
-        rag_context = await get_kb_context(
-            db, conversation.knowledge_base_id, user_content
-        )
-        if rag_context:
-            # Append RAG context to the system message
-            if llm_messages and llm_messages[0]["role"] == "system":
-                llm_messages[0] = {
-                    "role": "system",
-                    "content": llm_messages[0]["content"] + "\n\n" + rag_context,
-                }
+        _chat_logger = logging.getLogger(__name__)
+        try:
+            rag_context = await get_kb_context(
+                db, conversation.knowledge_base_id, user_content
+            )
+            if rag_context:
+                # Append RAG context to the system message
+                if llm_messages and llm_messages[0]["role"] == "system":
+                    llm_messages[0] = {
+                        "role": "system",
+                        "content": llm_messages[0]["content"] + "\n\n" + rag_context,
+                    }
+        except Exception:
+            _chat_logger.warning(
+                "RAG context retrieval failed for kb_id=%s",
+                conversation.knowledge_base_id,
+                exc_info=True,
+            )
 
     # Stream from LLM
     full_content = ""
