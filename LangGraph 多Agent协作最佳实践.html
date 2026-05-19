@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LangGraph 多Agent协作最佳实践</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-hover: #1c2333;
+    --border: #30363d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #484f58;
+    --accent: #58a6ff;
+    --accent-glow: rgba(88, 166, 255, 0.15);
+    --green: #3fb950;
+    --orange: #d29922;
+    --purple: #bc8cff;
+    --red: #f85149;
+    --cyan: #39d2c0;
+    --pink: #f778ba;
+    --code-bg: #1c2128;
+    --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  .deck-container {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px 100px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease, transform 0.4s ease;
+    transform: translateY(12px);
+    will-change: opacity, transform;
+  }
+  .slide.active {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+
+  /* ---- Slide Layouts ---- */
+
+  /* Title slide */
+  .slide--title {
+    align-items: center;
+    text-align: center;
+  }
+  .slide--title h1 {
+    font-size: 64px;
+    font-weight: 700;
+    letter-spacing: -1.5px;
+    line-height: 1.15;
+    max-width: 900px;
+  }
+  .slide--title .subtitle {
+    font-size: 22px;
+    color: var(--text-secondary);
+    margin-top: 20px;
+    font-weight: 400;
+  }
+  .slide--title .meta {
+    margin-top: 40px;
+    font-size: 14px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 24px;
+    align-items: center;
+  }
+  .slide--title .meta span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* Section divider */
+  .slide--section {
+    align-items: center;
+    text-align: center;
+    background: radial-gradient(ellipse at center, var(--accent-glow) 0%, transparent 70%);
+  }
+  .slide--section .section-num {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .slide--section h2 {
+    font-size: 52px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    max-width: 800px;
+  }
+
+  /* Content slide */
+  .slide--content h2 {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 32px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .slide--content h2 .badge {
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--accent-glow);
+    color: var(--accent);
+    padding: 4px 12px;
+    border-radius: 100px;
+    letter-spacing: 0;
+  }
+
+  .content-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    flex: 1;
+    align-content: center;
+  }
+  .content-grid--single {
+    grid-template-columns: 1fr;
+  }
+  .content-grid--3col {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 32px;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .card:hover {
+    border-color: rgba(88, 166, 255, 0.3);
+    box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.1);
+  }
+  .card .card-icon {
+    font-size: 28px;
+    margin-bottom: 12px;
+    display: block;
+  }
+  .card h3 {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--text-primary);
+  }
+  .card p, .card li {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+  .card ul {
+    list-style: none;
+    padding: 0;
+  }
+  .card ul li {
+    padding: 3px 0;
+    padding-left: 18px;
+    position: relative;
+  }
+  .card ul li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 11px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.6;
+  }
+  .card ul li code {
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--cyan);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  .code-block {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 13.5px;
+    line-height: 1.65;
+    overflow-x: auto;
+    color: var(--text-primary);
+    white-space: pre;
+  }
+  .code-block .kw { color: var(--purple); }
+  .code-block .fn { color: var(--accent); }
+  .code-block .str { color: var(--green); }
+  .code-block .cm { color: var(--text-muted); font-style: italic; }
+  .code-block .num { color: var(--orange); }
+  .code-block .type { color: var(--cyan); }
+
+  /* Architecture diagram slide */
+  .arch-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .arch-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 28px;
+    text-align: center;
+    min-width: 140px;
+    transition: border-color var(--transition);
+  }
+  .arch-box:hover {
+    border-color: var(--accent);
+  }
+  .arch-box .arch-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+  }
+  .arch-box .arch-title {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .arch-arrow {
+    font-size: 28px;
+    color: var(--text-muted);
+  }
+  .arch-arrow-v {
+    font-size: 24px;
+    color: var(--text-muted);
+    display: block;
+  }
+
+  /* Comparison table */
+  .compare-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 14px;
+  }
+  .compare-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .compare-table td {
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table td:first-child {
+    color: var(--text-primary);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .compare-table .check { color: var(--green); }
+  .compare-table .cross { color: var(--text-muted); }
+
+  /* Step list */
+  .step-list {
+    list-style: none;
+    counter-reset: step;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .step-list li {
+    counter-increment: step;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .step-list li::before {
+    content: counter(step);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--accent-glow);
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .step-list li .step-body {
+    flex: 1;
+  }
+  .step-list li .step-body strong {
+    display: block;
+    font-size: 16px;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .step-list li .step-body span {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  /* Tag pills */
+  .tag-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .tag-pills .tag {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 100px;
+    background: var(--accent-glow);
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .tag-pills .tag.green { background: rgba(63, 185, 80, 0.12); color: var(--green); }
+  .tag-pills .tag.orange { background: rgba(210, 153, 34, 0.12); color: var(--orange); }
+  .tag-pills .tag.purple { background: rgba(188, 140, 255, 0.12); color: var(--purple); }
+  .tag-pills .tag.pink { background: rgba(247, 120, 186, 0.12); color: var(--pink); }
+  .tag-pills .tag.cyan { background: rgba(57, 210, 192, 0.12); color: var(--cyan); }
+
+  /* ---- Navigation ---- */
+  .nav-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 32px;
+    background: linear-gradient(transparent, rgba(13, 17, 23, 0.95) 40%);
+    z-index: 100;
+  }
+  .nav-bar .slide-counter {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .nav-bar .slide-counter .current { color: var(--text-primary); font-weight: 600; }
+  .nav-actions {
+    display: flex;
+    gap: 10px;
+  }
+  .nav-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition);
+  }
+  .nav-btn:hover { border-color: var(--accent); color: var(--text-primary); background: var(--surface-hover); }
+  .nav-btn:disabled { opacity: 0.3; cursor: default; }
+
+  /* Progress dots */
+  .progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--border);
+    z-index: 100;
+  }
+  .progress-bar .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.4s ease;
+  }
+
+  /* Full-page code */
+  .slide--code h2 { margin-bottom: 20px; }
+  .slide--code .code-block { flex: 1; max-height: 55vh; overflow-y: auto; }
+
+  /* Key visual element */
+  .highlight-text {
+    font-size: 22px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    max-width: 800px;
+    margin-top: 8px;
+  }
+  .highlight-text strong { color: var(--text-primary); font-weight: 600; }
+  .highlight-text .accent-text { color: var(--accent); }
+
+  /* Summary table row */
+  .summary-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .summary-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+  }
+  .summary-card h3 {
+    font-size: 18px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .summary-card p {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  @media (max-width: 1024px) {
+    .slide { padding: 60px 48px; }
+    .slide--title h1 { font-size: 44px; }
+    .slide--section h2 { font-size: 38px; }
+    .slide--content h2 { font-size: 28px; }
+    .content-grid { grid-template-columns: 1fr; }
+    .content-grid--3col { grid-template-columns: 1fr; }
+    .arch-row { gap: 20px; }
+    .summary-row { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 600px) {
+    .slide { padding: 40px 24px; }
+    .slide--title h1 { font-size: 32px; }
+    .slide--content h2 { font-size: 22px; margin-bottom: 20px; }
+    .card { padding: 20px; }
+    .nav-bar { padding: 12px 16px; }
+  }
+  @media print {
+    .nav-bar, .progress-bar { display: none; }
+    .slide { opacity: 1 !important; position: relative; transform: none !important; page-break-after: always; height: auto; min-height: 100vh; }
+    body { overflow: visible; }
+    .card { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+
+<div class="deck-container" id="deck">
+
+<!-- SLIDE 0: Title -->
+<div class="slide slide--title active" data-title="Title">
+  <h1>LangGraph 多Agent协作<br>最佳实践</h1>
+  <p class="subtitle">Building Robust Multi-Agent Systems with LangGraph</p>
+  <div class="meta">
+    <span>📖 最佳实践指南</span>
+    <span>⚡ v1.0</span>
+  </div>
+</div>
+
+<!-- SLIDE 1: 目录 -->
+<div class="slide slide--content" data-title="目录">
+  <h2>📋 目录</h2>
+  <div class="content-grid content-grid--3col" style="grid-template-columns: 1fr 1fr 1fr;">
+    <div class="card">
+      <h3>01 架构模式</h3>
+      <ul>
+        <li>Supervisor 模式</li>
+        <li>层级式编排</li>
+        <li>网络式协作</li>
+        <li>选择决策树</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>02 状态管理</h3>
+      <ul>
+        <li>全局 vs 局部状态</li>
+        <li>状态缩减器模式</li>
+        <li>消息传递策略</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>03 通信 &amp; 工具</h3>
+      <ul>
+        <li>Agent间通信协议</li>
+        <li>工具注册与权限</li>
+        <li>共享上下文</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>04 可靠性</h3>
+      <ul>
+        <li>错误恢复</li>
+        <li>重试与兜底</li>
+        <li>超时控制</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>05 测试 &amp; 评估</h3>
+      <ul>
+        <li>单元测试 Agent</li>
+        <li>端到端流程测试</li>
+        <li>质量评估框架</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>06 生产部署</h3>
+      <ul>
+        <li>可观测性</li>
+        <li>可扩展性</li>
+        <li>安全边界</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 2: Section - 架构模式 -->
+<div class="slide slide--section" data-title="Section 1">
+  <div class="section-num">Part 01</div>
+  <h2>架构模式<br>Architecture Patterns</h2>
+</div>
+
+<!-- SLIDE 3: Supervisor 模式 -->
+<div class="slide slide--content" data-title="Supervisor 模式">
+  <h2>🏗️ Supervisor 模式 <span class="badge">最常用</span></h2>
+  <div class="content-grid">
+    <div class="card">
+      <h3>核心思路</h3>
+      <p>一个 <strong>Supervisor Agent</strong> 作为调度中心，负责任务分发、结果汇总、异常处理。子 Agent 专注于单一领域。</p>
+      <div class="arch-row" style="margin-top:20px;gap:16px;">
+        <div class="arch-box" style="border-color:var(--accent);background:var(--accent-glow);">
+          <div class="arch-title" style="color:var(--accent);">Supervisor</div>
+          <div class="arch-label">调度 &amp; 决策</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div class="arch-box"><div class="arch-title">研究员</div></div>
+          <div class="arch-box"><div class="arch-title">代码生成</div></div>
+          <div class="arch-box"><div class="arch-title">审查</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>适用场景</h3>
+      <ul>
+        <li>任务有明确可分解的步骤</li>
+        <li>需要不同专业能力的 Agent</li>
+        <li>需要统一的质量控制</li>
+      </ul>
+      <div class="tag-pills">
+        <span class="tag green">✓ 适合复杂工作流</span>
+        <span class="tag">⚠ 单点瓶颈</span>
+      </div>
+      <div class="code-block" style="margin-top:14px;font-size:12.5px;">
+<span class="kw">def</span> <span class="fn">supervisor_node</span>(state):
+    <span class="cm"># 决定下一步哪个 agent 工作</span>
+    next_agent = router_llm.invoke(state)
+    <span class="kw">return</span> {<span class="str">"next"</span>: next_agent}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 4: 层级式 & 网络式 -->
+<div class="slide slide--content" data-title="层级式与网络式">
+  <h2>🏛️ 层级式 vs 网络式编排</h2>
+  <div class="content-grid">
+    <div class="card">
+      <h3>▶ 层级式 (Hierarchical)</h3>
+      <p>多级 Supervisor 树形结构，高层 Agent 分解任务给中层，中层再委派给叶子 Agent。</p>
+      <div class="code-block" style="margin-top:12px;font-size:12.5px;">
+<span class="cm"># 层级：每个节点只关心下一级</span>
+<span class="kw">class</span> TopLevel(<span class="type">StateGraph</span>):
+    <span class="fn">route_work</span> → PM → Dev → QA
+      </div>
+      <div class="tag-pills"><span class="tag green">✓ 职责分明</span><span class="tag orange">⚠ 延迟较高</span></div>
+    </div>
+    <div class="card">
+      <h3>◉ 网络式 (Networked)</h3>
+      <p>Agent 之间直接通信，通过<strong>共享状态或消息队列</strong>协作。每个 Agent 可以主动向其他 Agent 发起请求。</p>
+      <div class="code-block" style="margin-top:12px;font-size:12.5px;">
+<span class="cm"># 网络：Agent 之间直接对话</span>
+AgentA.send(AgentB, query)
+AgentB.respond_with(result)
+      </div>
+      <div class="tag-pills"><span class="tag green">✓ 灵活</span><span class="tag orange">⚠ 调试复杂</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 5: 架构选择决策树 -->
+<div class="slide slide--content" data-title="架构选择">
+  <h2>🧭 架构选择决策</h2>
+  <div class="content-grid content-grid--single">
+    <div class="card">
+      <ul class="step-list">
+        <li>
+          <div class="step-body">
+            <strong>任务可线性分解？</strong>
+            <span>→ <strong>Supervisor 模式</strong>。一步接一步，Supervisor 统一调度。</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>子任务依赖层级深？</strong>
+            <span>→ <strong>层级式编排</strong>。多层分解，树形管理。</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>Agent 需要互相协商？</strong>
+            <span>→ <strong>网络式协作</strong>。Agent 可互相调用，适用于辩论、协商场景。</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>需要路由但避免单点？</strong>
+            <span>→ <strong>动态 Router</strong>。用 LLM 判断路由，但加 fallback 防止卡死。</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 6: Section - 状态管理 -->
+<div class="slide slide--section" data-title="Section 2">
+  <div class="section-num">Part 02</div>
+  <h2>状态管理<br>State Management</h2>
+</div>
+
+<!-- SLIDE 7: State 设计 -->
+<div class="slide slide--content" data-title="State 设计">
+  <h2>📦 State 设计原则</h2>
+  <div class="content-grid">
+    <div class="card">
+      <h3>✅ 最佳实践</h3>
+      <ul>
+        <li>用 <code>TypedDict</code> 定义强类型状态</li>
+        <li>区分 <strong>共享状态</strong> 与 <strong>Agent 私有状态</strong></li>
+        <li>使用 <code>add_messages</code> reducer 累积消息</li>
+        <li>状态尽量扁平化，避免深层嵌套</li>
+        <li>用 <code>Annotation</code> 自定义缩减逻辑</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>❌ 常见陷阱</h3>
+      <ul>
+        <li>所有 Agent 共享同一个巨大 State → 上下文污染</li>
+        <li>频繁修改全局状态 → 竞态条件</li>
+        <li>无限制的消息列表增长 → Token 爆炸</li>
+        <li>状态中塞入 LLM 原始输出 → 不可预测的格式</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 8: 状态模式示例 -->
+<div class="slide slide--code" data-title="State 代码示例">
+  <h2>📄 State 定义示例</h2>
+  <div class="code-block"><span class="kw">from</span> typing <span class="kw">import</span> Annotated, TypedDict, List
+<span class="kw">from</span> langgraph.graph <span class="kw">import</span> add_messages
+<span class="kw">from</span> langgraph.managed <span class="kw">import</span> IsLastStep
+
+<span class="kw">class</span> <span class="type">AgentState</span>(<span class="type">TypedDict</span>):
+    <span class="cm"># 消息历史 —— LangGraph 内置 reducer 自动追加</span>
+    messages: Annotated[List, add_messages]
+
+    <span class="cm"># 当前任务描述（只读，不累积）</span>
+    task: str
+
+    <span class="cm"># 各 agent 的中间产出 —— 自定义 reducer</span>
+    agent_outputs: Annotated[<span class="type">dict</span>, <span class="fn">merge_dicts</span>]
+
+    <span class="cm"># 当前由谁处理</span>
+    current_agent: str
+
+    <span class="cm"># 最终结果</span>
+    final_result: str | <span class="kw">None</span>
+
+
+<span class="kw">def</span> <span class="fn">merge_dicts</span>(a: <span class="type">dict</span>, b: <span class="type">dict</span>) -> <span class="type">dict</span>:
+    <span class="cm"># 自定义 reducer：后写覆盖先写</span>
+    <span class="kw">return</span> {**a, **b}</div>
+</div>
+
+<!-- SLIDE 9: Section - 通信与工具 -->
+<div class="slide slide--section" data-title="Section 3">
+  <div class="section-num">Part 03</div>
+  <h2>Agent 通信 &amp; 工具<br>Communication &amp; Tools</h2>
+</div>
+
+<!-- SLIDE 10: 通信模式 -->
+<div class="slide slide--content" data-title="通信模式">
+  <h2>💬 Agent 间通信模式</h2>
+  <div class="content-grid">
+    <div class="card">
+      <h3>🔹 通过 State 通信（推荐）</h3>
+      <ul>
+        <li>Agent A 写结果到 <code>state["agent_outputs"][A]</code></li>
+        <li>Agent B 从 <code>state</code> 中读取</li>
+        <li>天然支持异步和重放</li>
+        <li>LangGraph 的 <code>checkpoint</code> 自动持久化</li>
+      </ul>
+      <div class="tag-pills"><span class="tag green">✓ 可追踪</span><span class="tag green">✓ 可调试</span></div>
+    </div>
+    <div class="card">
+      <h3>🔸 通过消息传递</h3>
+      <ul>
+        <li>Agent 之间直接发送 <code>Command</code></li>
+        <li>适用于需要实时协商的场景</li>
+        <li>需配合 <code>interrupt</code> 实现等待</li>
+        <li>注意循环引用检测</li>
+      </ul>
+      <div class="tag-pills"><span class="tag orange">⚠ 复杂度高</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 11: 工具注册与权限 -->
+<div class="slide slide--content" data-title="工具注册">
+  <h2>🔧 工具注册与权限控制</h2>
+  <div class="content-grid">
+    <div class="card">
+      <h3>工具设计原则</h3>
+      <ul>
+        <li>每个工具职责单一</li>
+        <li>输入输出类型明确</li>
+        <li>提供清晰的文档字符串</li>
+        <li>绑定 <strong>权限标签</strong>，限制敏感操作</li>
+      </ul>
+      <div class="code-block" style="margin-top:14px;font-size:12.5px;">
+<span class="kw">@tool</span>(name_style=<span class="str">"lower_underscore"</span>)
+<span class="kw">def</span> <span class="fn">search_knowledge_base</span>(query: <span class="type">str</span>) -> <span class="type">str</span>:
+    <span class="str">"""搜索知识库。只读操作，所有 agent 可用。"""</span>
+    ...
+      </div>
+    </div>
+    <div class="card">
+      <h3>Agent-工具绑定</h3>
+      <ul>
+        <li>每个 Agent 只暴露必要的工具</li>
+        <li>敏感工具（写数据库、发邮件）配<strong>审批节点</strong></li>
+        <li>用 <code>bind_tools</code> 按角色注入</li>
+      </ul>
+      <div class="code-block" style="margin-top:14px;font-size:12.5px;">
+<span class="cm"># 研究员只有读权限</span>
+researcher = llm.<span class="fn">bind_tools</span>([search, read])
+<span class="cm"># 执行者有写权限</span>
+executor = llm.<span class="fn">bind_tools</span>([write_db, ...])
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 12: Section - 可靠性 -->
+<div class="slide slide--section" data-title="Section 4">
+  <div class="section-num">Part 04</div>
+  <h2>可靠性工程<br>Reliability Engineering</h2>
+</div>
+
+<!-- SLIDE 13: 错误处理 -->
+<div class="slide slide--content" data-title="错误处理">
+  <h2>🛡️ 错误恢复与兜底策略</h2>
+  <div class="content-grid">
+    <div class="card">
+      <h3>重试策略</h3>
+      <div class="step-list" style="gap:10px;">
+        <li>
+          <div class="step-body">
+            <strong>指数退避重试</strong>
+            <span>LLM 调用 + 工具调用各配 <code>max_retries=3</code></span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>有条件重试</strong>
+            <span>只在<code>rate_limit</code> / <code>timeout</code> 时重试，不可恢复错误直接上报</span>
+          </div>
+        </li>
+      </div>
+    </div>
+    <div class="card">
+      <h3>兜底策略 (Fallback)</h3>
+      <ul>
+        <li><strong>降级 Agent</strong>：主 Agent 失败 → 简单规则 Agent</li>
+        <li><strong>超时中止</strong>：单 Agent 超时 → Supervisor 接管</li>
+        <li><strong>人工介入</strong>：关键节点用 <code>interrupt</code> 暂停，等待人工确认</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 14: LangGraph 特有机制 -->
+<div class="slide slide--content" data-title="LangGraph 可靠性">
+  <h2>⚙️ LangGraph 可靠性机制</h2>
+  <div class="content-grid content-grid--single">
+    <table class="compare-table">
+      <tr><th>机制</th><th>说明</th><th>适用场景</th></tr>
+      <tr>
+        <td>🔄 Checkpoint</td>
+        <td>自动保存每个节点的执行状态</td>
+        <td>崩溃恢复、调试重放</td>
+      </tr>
+      <tr>
+        <td>⏸️ Interrupt</td>
+        <td>在任意节点暂停执行，等待外部输入</td>
+        <td>人工审批、动态数据注入</td>
+      </tr>
+      <tr>
+        <td>🔁 Node Retry</td>
+        <td>节点级别配置重试策略</td>
+        <td>LLM 调用失败、API 超时</td>
+      </tr>
+      <tr>
+        <td>📌 Command</td>
+        <td>跨节点指令传递，支持 goto/resume</td>
+        <td>动态路由、错误恢复后跳转</td>
+      </tr>
+      <tr>
+        <td>📝 State Validation</td>
+        <td>每个节点执行后校验状态模式</td>
+        <td>防止 State 结构污染</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- SLIDE 15: Section - 测试 -->
+<div class="slide slide--section" data-title="Section 5">
+  <div class="section-num">Part 05</div>
+  <h2>测试 &amp; 评估<br>Testing &amp; Evaluation</h2>
+</div>
+
+<!-- SLIDE 16: 测试策略 -->
+<div class="slide slide--content" data-title="测试策略">
+  <h2>🧪 多Agent 测试金字塔</h2>
+  <div class="content-grid">
+    <div class="card">
+      <h3>单元测试</h3>
+      <ul>
+        <li>Mock LLM 响应，测试 Node 逻辑</li>
+        <li>测试 State 转换是否正确</li>
+        <li>测试工具调用的入参/出参</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>集成测试</h3>
+      <ul>
+        <li>测试 2-3 个 Agent 的协作流程</li>
+        <li>验证 Agent 间的消息传递</li>
+        <li>测试错误恢复路径</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>端到端测试</h3>
+      <ul>
+        <li>真实 LLM，固定 seed</li>
+        <li>验证最终输出质量</li>
+        <li>测试超时、重试、降级</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>评估 (Eval)</h3>
+      <ul>
+        <li>定义质量指标：准确率、覆盖率</li>
+        <li>使用 LangSmith trace 分析</li>
+        <li>回归测试对比基线</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 17: 评估框架 -->
+<div class="slide slide--code" data-title="评估示例">
+  <h2>📊 评估示例</h2>
+  <div class="code-block"><span class="kw">import</span> pytest
+<span class="kw">from</span> langsmith <span class="kw">import</span> Client
+
+<span class="kw">def</span> <span class="fn">test_multi_agent_flow</span>(client: <span class="type">Client</span>):
+    <span class="cm"># 运行完整工作流</span>
+    result = graph.<span class="fn">invoke</span>({
+        <span class="str">"task"</span>: <span class="str">"实现一个用户注册API"</span>,
+        <span class="str">"messages"</span>: []
+    })
+
+    <span class="cm"># 断言关键步骤完成</span>
+    <span class="kw">assert</span> result[<span class="str">"final_result"</span>] <span class="kw">is not</span> <span class="kw">None</span>
+    <span class="kw">assert</span> <span class="str">"register"</span> <span class="kw">in</span> result[<span class="str">"final_result"</span>].lower()
+
+    <span class="cm"># 检查所有子 agent 是否有产出</span>
+    <span class="kw">assert</span> <span class="fn">len</span>(result[<span class="str">"agent_outputs"</span>]) >= <span class="num">2</span></div>
+</div>
+
+<!-- SLIDE 18: Section - 生产部署 -->
+<div class="slide slide--section" data-title="Section 6">
+  <div class="section-num">Part 06</div>
+  <h2>生产部署<br>Production Deployment</h2>
+</div>
+
+<!-- SLIDE 19: 可观测性 -->
+<div class="slide slide--content" data-title="可观测性">
+  <h2>🔭 可观测性三支柱</h2>
+  <div class="content-grid content-grid--3col">
+    <div class="card">
+      <h3>📈 指标 (Metrics)</h3>
+      <ul>
+        <li>每个 Agent 的调用耗时</li>
+        <li>工具调用成功率</li>
+        <li>总 Token 消耗</li>
+        <li>工作流完成率</li>
+      </ul>
+      <div class="tag-pills"><span class="tag">Prometheus + Grafana</span></div>
+    </div>
+    <div class="card">
+      <h3>🔍 链路追踪 (Tracing)</h3>
+      <ul>
+        <li>LangSmith / LangFuse</li>
+        <li>追踪 Agent → Tool → LLM 调用链</li>
+        <li>记录每次 State 变更</li>
+      </ul>
+      <div class="tag-pills"><span class="tag cyan">✓ LangSmith</span></div>
+    </div>
+    <div class="card">
+      <h3>📋 日志 (Logging)</h3>
+      <ul>
+        <li>结构化 JSON 日志</li>
+        <li>每个 Node 的入/出参</li>
+        <li>异常堆栈 + 上下文快照</li>
+      </ul>
+      <div class="tag-pills"><span class="tag">ELK / Loki</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 20: 性能与扩展 -->
+<div class="slide slide--content" data-title="性能扩展">
+  <h2>⚡ 性能与可扩展性</h2>
+  <div class="content-grid">
+    <div class="card">
+      <h3>水平扩展</h3>
+      <ul>
+        <li>无状态 Node 支持并行执行</li>
+        <li>使用 <code>fan-out</code> 并行分发子任务</li>
+        <li>Checkpoint 存储用 Postgres/Redis（非内存）</li>
+        <li>Graph 编译后缓存计算图</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Token 优化</h3>
+      <ul>
+        <li>限制消息历史长度：只保留最近 N 轮</li>
+        <li>Agent 完成后清除其私有上下文</li>
+        <li>使用 <code>summarization</code> node 定期摘要</li>
+        <li>工具描述精简，只传必需的 schema</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 21: 安全边界 -->
+<div class="slide slide--content" data-title="安全">
+  <h2>🔒 安全边界设计</h2>
+  <div class="content-grid">
+    <div class="card">
+      <h3>Agent 权限隔离</h3>
+      <ul>
+        <li>每个 Agent 有独立的 <strong>工具白名单</strong></li>
+        <li>敏感操作使用 <code>interrupt</code> 人工审批</li>
+        <li>LLM 输出校验（JSON Schema、正则）</li>
+        <li>限制 Agent 可访问的 State 字段</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>数据安全</h3>
+      <ul>
+        <li>State 中不存储明文密码/Token</li>
+        <li>工具调用参数做 SQL 注入防护</li>
+        <li>外部 API 调用限速（Rate Limiting）</li>
+        <li>敏感数据脱敏后在传给子 Agent</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 22: 总结 -->
+<div class="slide slide--content" data-title="总结">
+  <h2>🎯 核心要点回顾</h2>
+  <div class="summary-row">
+    <div class="summary-card">
+      <h3>🏗️ 架构</h3>
+      <p>根据任务复杂度选择 Supervisor、层级或网络模式。<strong>优先用 Supervisor</strong>，它最可控。</p>
+    </div>
+    <div class="summary-card">
+      <h3>📦 状态</h3>
+      <p>State 扁平化、强类型、职责分离。用 <code>add_messages</code> 管理消息，自定义 reducer 处理中间产出。</p>
+    </div>
+    <div class="summary-card">
+      <h3>🔧 工具</h3>
+      <p>每个 Agent 绑定最小工具集。敏感操作加审批。工具文档清晰、类型完整。</p>
+    </div>
+    <div class="summary-card">
+      <h3>🛡️ 可靠</h3>
+      <p>重试 + 降级 + 中断三位一体。Checkpoint 自动保存。人工兜底是最后防线。</p>
+    </div>
+    <div class="summary-card">
+      <h3>🧪 测试</h3>
+      <p>从单元到 E2E 逐层覆盖。用 LangSmith 做回归评估。Mock LLM 提高测试速度。</p>
+    </div>
+    <div class="summary-card">
+      <h3>🚀 生产</h3>
+      <p>指标 + 追踪 + 日志全覆盖。Token 预算管理。权限最小化原则。</p>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 23: Thank You -->
+<div class="slide slide--title" data-title="Thank You">
+  <h1 style="font-size:56px;">感谢阅读 🙌</h1>
+  <p class="subtitle" style="font-size:18px;max-width:640px;margin:20px auto 0;">
+    LangGraph 让多 Agent 协作变得结构化、可调试、可扩展。<br>
+    从简单的 Supervisor 开始，逐步演进。
+  </p>
+  <div class="meta" style="justify-content:center;">
+    <span>⏎ 按 <kbd style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:0 8px;">←</kbd> <kbd style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:0 8px;">→</kbd> 翻页</span>
+    <span>📄 打印友好 - 支持导出 PDF</span>
+  </div>
+</div>
+
+</div><!-- /deck-container -->
+
+<div class="nav-bar">
+  <div class="slide-counter">
+    <span class="current" id="currentSlide">1</span>
+    <span> / <span id="totalSlides">1</span></span>
+  </div>
+  <div class="nav-actions">
+    <button class="nav-btn" id="prevBtn" title="上一页">←</button>
+    <button class="nav-btn" id="nextBtn" title="下一页">→</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  const currentSpan = document.getElementById('currentSlide');
+  const totalSpan = document.getElementById('totalSlides');
+  const progressFill = document.getElementById('progressFill');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+
+  let current = 0;
+  totalSpan.textContent = total;
+
+  function showSlide(index) {
+    slides.forEach((s, i) => {
+      s.classList.toggle('active', i === index);
+    });
+    current = index;
+    currentSpan.textContent = index + 1;
+    progressFill.style.width = ((index + 1) / total * 100) + '%';
+    prevBtn.disabled = index === 0;
+    nextBtn.disabled = index === total - 1;
+    try { localStorage.setItem('langgraph_deck_slide', index); } catch(e) {}
+  }
+
+  function next() { if (current < total - 1) showSlide(current + 1); }
+  function prev() { if (current > 0) showSlide(current - 1); }
+
+  prevBtn.addEventListener('click', prev);
+  nextBtn.addEventListener('click', next);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); next(); }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); prev(); }
+    if (e.key === 'Home') { e.preventDefault(); showSlide(0); }
+    if (e.key === 'End') { e.preventDefault(); showSlide(total - 1); }
+  });
+
+  // Restore last slide
+  try {
+    const saved = parseInt(localStorage.getItem('langgraph_deck_slide'), 10);
+    if (!isNaN(saved) && saved >= 0 && saved < total) showSlide(saved);
+    else showSlide(0);
+  } catch(e) { showSlide(0); }
+})();
+</script>
+
+</body>
+</html>
