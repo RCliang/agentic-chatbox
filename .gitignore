@@ -9,4 +9,5 @@ build/
 *.egg-info/
 tmpclaude-*
 backend/tmpclaude-*
+frontend/tmpclaude-*
 NUL
